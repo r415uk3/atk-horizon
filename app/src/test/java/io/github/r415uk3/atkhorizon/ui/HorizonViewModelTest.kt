@@ -597,6 +597,17 @@ class HorizonViewModelTest {
         assertEquals(EqBand.DEFAULTS, r.state.bands)
         assertEquals("default", r.state.activePresetId)
 
+        // A drag writes live values to device RAM (no DAC involved); the refused save then shows
+        // what the device really holds, not the cached curve.
+        val dragged = EqBand(FilterType.Peak, 1000, 1.0, 6.0)
+        r.vm.onBandDrag(5, dragged)
+        r.vm.onBandDragEnd(5)
+        advanceUntilIdle()
+        assertEquals(UiError.SuspiciousOffset(changeBlocked = true), r.state.error)
+        assertTrue(r.fake.log.none { it.dir == 0x01 && it.cmd in setOf(0x01, 0x03) })
+        assertEquals(dragged, r.fake.bands[5].band)
+        assertEquals(r.fake.bands.map { it.band }, r.state.bands)
+
         // Setting the offset explicitly is the way out; then EQ edits go through.
         r.vm.setDacOffset(0.0)
         advanceUntilIdle()

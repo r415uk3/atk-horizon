@@ -77,6 +77,7 @@ class UsbHidTransport(
             l.unlock()
         }
     }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // DROP_OLDEST keeps tryEmit non-blocking and guarantees the final Gone event is kept.

@@ -17,9 +17,9 @@ import io.github.r415uk3.atkhorizon.protocol.HorizonDevice
 import io.github.r415uk3.atkhorizon.protocol.Packets
 import io.github.r415uk3.atkhorizon.protocol.Responses
 import io.github.r415uk3.atkhorizon.protocol.SuspiciousDeviceValueException
-import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
 import io.github.r415uk3.atkhorizon.protocol.UnstableFilterException
 import io.github.r415uk3.atkhorizon.protocol.VerifyException
+import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
 import io.github.r415uk3.atkhorizon.usb.UsbState
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -176,8 +176,9 @@ class HorizonViewModel(
 
     /**
      * Runs [block] under the connection's I/O lock and yields null on failure. Device loss →
-     * Disconnected. Any other failure (timeout, failed transfer, unexpected exception) → [failed]:
-     * [onFail] drops the op's unconfirmed display state, then the device is re-read.
+     * Disconnected. Any other failure (timeout, failed transfer, unexpected exception, or a write
+     * refused for an implausible DAC offset) → [failed]: [onFail] drops the op's unconfirmed
+     * display state, then the device is re-read.
      * [VerifyException] is the caller's to handle (inside [block], under the lock).
      */
     private suspend fun <T> op(
@@ -194,16 +195,12 @@ class HorizonViewModel(
         } catch (_: DeviceGoneException) {
             if (session === s) lostDevice(UiError.Disconnected)
         } catch (_: SuspiciousDeviceValueException) {
-            // Refused before anything was written: the device still holds what is displayed
-            // without the op's unconfirmed state.
-            if (session === s) {
-                onFail()
-                setError(UiError.SuspiciousOffset(changeBlocked = true))
-                publish(s)
-            }
+            // Refused before the op wrote anything, but earlier live drags may be in device RAM:
+            // re-read like any other failure so the curve shows what the device really plays.
+            failed(s, onFail, UiError.SuspiciousOffset(changeBlocked = true))
         } catch (_: Exception) {
             // TimeoutException, IOException (failed transfer, device still attached), or a bug.
-            failed(s, onFail)
+            failed(s, onFail, UiError.Timeout)
         } finally {
             if (busy) setBusy(s, -1)
         }
@@ -214,10 +211,10 @@ class HorizonViewModel(
      * A write may have been partly applied: show the last confirmed values at once, then re-read
      * the device once. If that fails too, the device is treated as lost.
      */
-    private suspend fun failed(s: Session, onFail: () -> Unit) {
+    private suspend fun failed(s: Session, onFail: () -> Unit, error: UiError) {
         if (session !== s) return
         if (_state.value.conn == ConnState.Loading) return lostDevice(UiError.Timeout)
-        setError(UiError.Timeout)
+        setError(error)
         onFail()
         _state.update { it.copy(dacOffset = s.knownDac, adcOffset = s.knownAdc, noiseCancelling = s.knownNc) }
         publish(s)
@@ -256,7 +253,10 @@ class HorizonViewModel(
                 noiseCancelling = snap.noiseCancelling,
             )
         }
-        if (dac == null || adc == null) setError(UiError.SuspiciousOffset(changeBlocked = false))
+        // Keeps a "change blocked" error from the same cause.
+        if ((dac == null || adc == null) && _state.value.error !is UiError.SuspiciousOffset) {
+            setError(UiError.SuspiciousOffset(changeBlocked = false))
+        }
         publish(s)
     }
 
