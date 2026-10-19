@@ -1,7 +1,9 @@
 package io.github.r415uk3.atkhorizon.protocol
 
-import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -76,14 +78,31 @@ class FakeHorizonTest {
     }
 
     @Test
+    fun readReturnsRawStoredBytes() = runTest {
+        val dev = FakeHorizon()
+        val link = HorizonLink(dev, backgroundScope)
+        val w = Packets.writeBand(4, custom)
+        w[33] = 9; w[27] = 0; w[28] = 0
+        link.write(w)
+        val r = link.request(Packets.readBand(4))
+        assertEquals(0x80, r[0].toInt() and 0xFF)
+        assertEquals(0x09, r[1].toInt())
+        assertEquals(w.drop(2), r.drop(2))
+    }
+
+    @Test
     fun unplugAfterThrowsAndEndsIncoming() = runTest {
         val dev = FakeHorizon()
         dev.unplugAfter = 2
         val link = HorizonLink(dev, backgroundScope, timeoutMs = 10, retries = 0)
         link.write(Packets.setDacOffset(1.0))
         link.write(Packets.setDacOffset(2.0))
-        try { link.write(Packets.setDacOffset(3.0)); fail() } catch (_: DeviceGoneException) {}
-        try { link.write(Packets.setDacOffset(4.0)); fail() } catch (_: DeviceGoneException) {}
+        val active = backgroundScope.async(start = CoroutineStart.UNDISPATCHED) { dev.incoming.toList() }
+        try { dev.send(Packets.setDacOffset(3.0)); fail() } catch (_: DeviceGoneException) {}
+        assertTrue(active.await().isEmpty())
+        try { dev.send(Packets.setDacOffset(4.0)); fail() } catch (_: DeviceGoneException) {}
+        assertTrue(dev.incoming.toList().isEmpty())
+        try { link.request(Packets.readFirmware()); fail() } catch (_: DeviceGoneException) {}
         assertEquals(2.0, dev.dacOffset, 0.0)
         assertEquals(2, dev.log.size)
     }

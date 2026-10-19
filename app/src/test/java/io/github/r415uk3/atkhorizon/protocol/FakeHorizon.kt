@@ -9,12 +9,14 @@ data class LogEntry(val dir: Int, val cmd: Int, val atMs: Long)
 
 /** Test-only simulator of the ATK Horizon headset. Replies synchronously from [send]. */
 class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
-    private fun defaultBands() = EqBand.DEFAULTS.mapIndexed { i, b -> Responses.band(Packets.writeBand(i, b)) }
-    private fun copy(b: DeviceBand) = b.copy(coeff = b.coeff.copyOf())
+    // Raw 63-byte write packets per band index, stored exactly as received.
+    private val rawBands: MutableList<ByteArray> =
+        EqBand.DEFAULTS.mapIndexed { i, b -> Packets.writeBand(i, b) }.toMutableList()
+    private var flashRaw: List<ByteArray> = rawBands.map { it.copyOf() }
 
-    val bands: MutableList<DeviceBand> = defaultBands().toMutableList()
-    var flashBands: List<DeviceBand> = bands.map(::copy)
-        private set
+    /** Parsed view of the stored bands, for test assertions. */
+    val bands: List<DeviceBand> get() = rawBands.map(Responses::band)
+    val flashBands: List<DeviceBand> get() = flashRaw.map(Responses::band)
     var dacOffset = 0.0
     var adcOffset = 0.0
     var flashDacOffset = 0.0
@@ -31,10 +33,12 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
     var failIfForbidden = true
 
     private var sends = 0
+    @Volatile private var unplugged = false
     private val shared = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     private val end = ByteArray(0)
 
     override val incoming: Flow<ByteArray> = flow {
+        if (unplugged) return@flow
         shared.transformWhile { if (it === end) false else { emit(it); true } }.collect { emit(it) }
     }
 
@@ -42,6 +46,7 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
         sends++
         val limit = unplugAfter
         if (limit != null && sends > limit) {
+            unplugged = true
             shared.emit(end)
             throw DeviceGoneException()
         }
@@ -58,14 +63,14 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
     private fun write(cmd: Int, p: ByteArray) {
         when (cmd) {
             0x09 -> {
-                val b = Responses.band(p)
-                if (b.index in bands.indices && b.index !in dropWritesFor) bands[b.index] = b
+                val index = p[4].toInt() and 0xFF
+                if (index in rawBands.indices && index !in dropWritesFor) rawBands[index] = p.copyOf()
             }
             0x03 -> dacOffset = Responses.offsetDb(p)
             0x02 -> adcOffset = Responses.offsetDb(p)
             0x1B -> nc = Responses.noiseCancelling(p)
             0x01 -> {
-                flashBands = bands.map(::copy)
+                flashRaw = rawBands.map { it.copyOf() }
                 flashDacOffset = dacOffset
                 flashAdcOffset = adcOffset
             }
@@ -79,14 +84,10 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
         r[1] = req[1]
         when (cmd) {
             0x09 -> {
-                val b = bands.getOrNull(req[4].toInt() and 0xFF) ?: return null
-                // Same layout as the write packet; payload length byte matches Packets.writeBand.
-                val w = Packets.writeBand(b.index, b.band)
-                w.copyInto(r)
+                val raw = rawBands.getOrNull(req[4].toInt() and 0xFF) ?: return null
+                raw.copyInto(r)
                 r[0] = req[0]
-                b.coeff.copyInto(r, 7)
-                r[29] = (b.qRaw and 0xFF).toByte(); r[30] = ((b.qRaw shr 8) and 0xFF).toByte()
-                r[31] = (b.gainRaw and 0xFF).toByte(); r[32] = ((b.gainRaw shr 8) and 0xFF).toByte()
+                r[1] = req[1]
             }
             0x03 -> putOffset(r, dacOffset)
             0x02 -> putOffset(r, adcOffset)
