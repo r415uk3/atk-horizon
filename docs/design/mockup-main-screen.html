@@ -1,0 +1,115 @@
+<style>
+  .phones { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; }
+  .phone-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .phone { width:280px; height:580px; border-radius:42px; position:relative; overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.35); font-family:-apple-system,"SF Pro Display",Inter,system-ui,sans-serif; }
+  .light { background:#e9ecf3; color:#111; --g:rgba(255,255,255,.42); --gb:rgba(255,255,255,.7); --ink:#111; --curve:#111; --muted:rgba(0,0,0,.5); --pillon:#111; --pillonText:#fff; }
+  .dark  { background:#0b0d12; color:#fff; --g:rgba(255,255,255,.08); --gb:rgba(255,255,255,.18); --ink:#fff; --curve:#fff; --muted:rgba(255,255,255,.55); --pillon:rgba(255,255,255,.9); --pillonText:#000; }
+  .bg { position:absolute; inset:0; }
+  .blob { position:absolute; border-radius:50%; filter:blur(50px); }
+  .glass { background:var(--g); border:1px solid var(--gb);
+    backdrop-filter:blur(22px) saturate(170%); -webkit-backdrop-filter:blur(22px) saturate(170%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 8px 24px rgba(0,0,0,.12); }
+  .content { position:absolute; inset:0; padding:46px 16px 16px; display:flex; flex-direction:column; gap:12px; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .title { font-size:26px; font-weight:700; letter-spacing:-.5px; }
+  .sub { font-size:12px; color:var(--muted); }
+  .gear { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .row { display:flex; gap:8px; }
+  .pill { border-radius:999px; padding:8px 12px; font-size:12px; font-weight:600; }
+  .pill.on { background:var(--pillon); color:var(--pillonText); }
+  .card { border-radius:26px; padding:14px; }
+  .tabbar { position:absolute; left:16px; right:16px; bottom:14px; border-radius:999px; height:54px; display:flex; justify-content:space-around; align-items:center; font-size:11px; }
+  .tabbar .t { display:flex; flex-direction:column; align-items:center; gap:2px; opacity:.5 }
+  .tabbar .t.on { opacity:1 }
+  .dot { width:20px; height:20px; border-radius:6px; background:var(--ink); opacity:.75 }
+  .freq { display:flex; justify-content:space-between; font-size:9px; color:var(--muted); padding:6px 2px 0; }
+  .label-under { font-size:14px; font-weight:600; }
+  .seg { display:flex; padding:4px; border-radius:999px; gap:4px; }
+  .seg div { flex:1; text-align:center; padding:7px 0; border-radius:999px; font-size:12px; font-weight:600; }
+  .seg .on { background:var(--pillon); color:var(--pillonText); }
+  .listrow { display:flex; justify-content:space-between; font-size:13px; padding:10px 2px; border-bottom:1px solid var(--gb); }
+  .listrow:last-child { border-bottom:none; }
+</style>
+
+<h2>Вариант A, спокойнее: светлая и тёмная тема</h2>
+<p class="subtitle">Мягкий пастельный фон как в C, кривая эквалайзера из A. Третий экран — где выбирается тема (Авто / Светлая / Тёмная). Данные всё ещё заглушки.</p>
+
+<div class="phones">
+
+  <div class="phone-wrap">
+    <div class="phone light">
+      <div class="bg">
+        <div class="blob" style="width:260px;height:260px;background:#bf5af2;top:-70px;left:-60px;opacity:.35"></div>
+        <div class="blob" style="width:260px;height:260px;background:#64d2ff;bottom:-60px;right:-80px;opacity:.4"></div>
+      </div>
+      <div class="content">
+        <div class="top"><div><div class="title">Horizon</div><div class="sub">Подключено · USB-C</div></div><div class="gear glass">⚙︎</div></div>
+        <div class="row"><div class="pill on">Игры</div><div class="pill glass">Музыка</div><div class="pill glass">Кино</div></div>
+        <div class="card glass">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px">Эквалайзер</div>
+          <svg viewBox="0 0 240 120" width="100%" height="120">
+            <defs><linearGradient id="gl" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#5e5ce6" stop-opacity=".25"/><stop offset="1" stop-color="#5e5ce6" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="60" x2="240" y2="60" stroke="rgba(0,0,0,.15)" stroke-dasharray="3 4"/>
+            <path d="M0,70 C30,30 50,28 70,45 S110,80 130,70 S180,40 200,50 S230,75 240,72 L240,120 L0,120Z" fill="url(#gl)"/>
+            <path d="M0,70 C30,30 50,28 70,45 S110,80 130,70 S180,40 200,50 S230,75 240,72" stroke="#111" stroke-width="2.5" fill="none"/>
+            <circle cx="40" cy="34" r="7" fill="#fff" stroke="#111" stroke-width="1.5"/><circle cx="120" cy="74" r="7" fill="#fff" stroke="#111" stroke-width="1.5"/><circle cx="200" cy="50" r="7" fill="#fff" stroke="#111" stroke-width="1.5"/>
+          </svg>
+          <div class="freq"><span>32</span><span>125</span><span>500</span><span>2k</span><span>8k</span><span>16k</span></div>
+        </div>
+        <div class="card glass" style="font-size:12px;display:flex;justify-content:space-between"><span>Пресет</span><span style="opacity:.6">Свой ›</span></div>
+      </div>
+      <div class="tabbar glass"><div class="t on"><div class="dot"></div>Звук</div><div class="t"><div class="dot"></div>Микрофон</div><div class="t"><div class="dot"></div>Устройство</div></div>
+    </div>
+    <div class="label-under">Светлая</div>
+  </div>
+
+  <div class="phone-wrap">
+    <div class="phone dark">
+      <div class="bg">
+        <div class="blob" style="width:260px;height:260px;background:#5e5ce6;top:-70px;left:-60px;opacity:.35"></div>
+        <div class="blob" style="width:260px;height:260px;background:#0a84ff;bottom:-60px;right:-80px;opacity:.25"></div>
+      </div>
+      <div class="content">
+        <div class="top"><div><div class="title">Horizon</div><div class="sub">Подключено · USB-C</div></div><div class="gear glass">⚙︎</div></div>
+        <div class="row"><div class="pill on">Игры</div><div class="pill glass">Музыка</div><div class="pill glass">Кино</div></div>
+        <div class="card glass">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px">Эквалайзер</div>
+          <svg viewBox="0 0 240 120" width="100%" height="120">
+            <defs><linearGradient id="gd" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="60" x2="240" y2="60" stroke="rgba(255,255,255,.2)" stroke-dasharray="3 4"/>
+            <path d="M0,70 C30,30 50,28 70,45 S110,80 130,70 S180,40 200,50 S230,75 240,72 L240,120 L0,120Z" fill="url(#gd)"/>
+            <path d="M0,70 C30,30 50,28 70,45 S110,80 130,70 S180,40 200,50 S230,75 240,72" stroke="#fff" stroke-width="2.5" fill="none"/>
+            <circle cx="40" cy="34" r="7" fill="#fff"/><circle cx="120" cy="74" r="7" fill="#fff"/><circle cx="200" cy="50" r="7" fill="#fff"/>
+          </svg>
+          <div class="freq"><span>32</span><span>125</span><span>500</span><span>2k</span><span>8k</span><span>16k</span></div>
+        </div>
+        <div class="card glass" style="font-size:12px;display:flex;justify-content:space-between"><span>Пресет</span><span style="opacity:.6">Свой ›</span></div>
+      </div>
+      <div class="tabbar glass"><div class="t on"><div class="dot"></div>Звук</div><div class="t"><div class="dot"></div>Микрофон</div><div class="t"><div class="dot"></div>Устройство</div></div>
+    </div>
+    <div class="label-under">Тёмная</div>
+  </div>
+
+  <div class="phone-wrap">
+    <div class="phone light">
+      <div class="bg">
+        <div class="blob" style="width:260px;height:260px;background:#bf5af2;top:-70px;left:-60px;opacity:.35"></div>
+        <div class="blob" style="width:260px;height:260px;background:#64d2ff;bottom:-60px;right:-80px;opacity:.4"></div>
+      </div>
+      <div class="content">
+        <div class="top"><div><div class="title">Настройки</div><div class="sub">Приложение</div></div><div class="gear glass">✕</div></div>
+        <div class="sub" style="padding-left:6px">ТЕМА</div>
+        <div class="seg glass"><div class="on">Авто</div><div>Светлая</div><div>Тёмная</div></div>
+        <div class="sub" style="padding-left:6px">«Авто» следует системной теме Android</div>
+        <div class="card glass">
+          <div class="listrow"><span>Прошивка</span><span style="opacity:.55">—</span></div>
+          <div class="listrow"><span>Исходный код</span><span style="opacity:.55">GitHub ›</span></div>
+          <div class="listrow"><span>Версия</span><span style="opacity:.55">0.1.0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="label-under">Выбор темы (⚙︎ сверху)</div>
+  </div>
+
+</div>
