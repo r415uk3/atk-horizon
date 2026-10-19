@@ -16,6 +16,14 @@ android {
         versionName = "0.1.0"
     }
 
+    buildTypes {
+        release {
+            // Personal build: signed with the debug key, R8/minify intentionally off.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
