@@ -73,10 +73,15 @@ class HorizonViewModel(
     private inner class Session(val device: HorizonDevice) {
         val job = SupervisorJob(this@HorizonViewModel.scope.coroutineContext[Job])
         /** Safety net: an unexpected exception outside [op] is surfaced, never crashes the app. */
-        val cs = CoroutineScope(
-            this@HorizonViewModel.scope.coroutineContext + job +
-                CoroutineExceptionHandler { _, _ -> if (session === this) setError(UiError.Timeout) },
-        )
+        private val handler = CoroutineExceptionHandler { _, _ -> if (session === this) setError(UiError.Timeout) }
+        val cs = CoroutineScope(this@HorizonViewModel.scope.coroutineContext + job + handler)
+        /**
+         * For preset applies and soft resets: same dispatcher, but not a child of the ViewModel
+         * scope or the session, so clearing the ViewModel or ending the session never cuts a
+         * sequence between its 0x09 writes and 0x01. Only a newer preset cancels a preset (it
+         * rewrites all 8 bands and saves itself); a reset is never cancelled.
+         */
+        val detached = CoroutineScope(this@HorizonViewModel.scope.coroutineContext.minusKey(Job) + SupervisorJob() + handler)
         val io = Mutex()
         /** What the device last reported. Empty until the snapshot is read. */
         var deviceBands: List<DeviceBand> = emptyList()
@@ -363,7 +368,8 @@ class HorizonViewModel(
 
     /**
      * Commits pending edits now (skipping the debounce) and waits for it, so edits reach flash
-     * before the USB claim is released (called from onStop). No-op when nothing is pending.
+     * before the USB claim is released (called from onStop). Also waits for a running soft reset
+     * and preset apply. No-op when nothing is pending.
      *
      * The commit runs in the caller's coroutine (AtkApp: the app scope), not in the ViewModel's
      * scope, and like every commit it is non-cancellable once started: clearing the ViewModel
@@ -373,6 +379,8 @@ class HorizonViewModel(
     suspend fun flushPending() {
         val s = session ?: return
         s.debounceJob?.cancel()
+        s.resetJob?.join()
+        s.presetJob?.join()
         // Waits for the I/O lock, so a running commit finishes first; commits whatever is still dirty.
         commit(s)
     }
@@ -427,7 +435,7 @@ class HorizonViewModel(
         activeId = p.id
         publish(s)
         s.presetJob?.cancel()
-        s.presetJob = s.cs.launch {
+        s.presetJob = s.detached.launch {
             op(s, onFail = { s.overlay.keys.retainAll(s.dirty.keys) }) { d ->
                 try {
                     val back = d.applyPreset(p.bands)
@@ -512,7 +520,10 @@ class HorizonViewModel(
         }
     }
 
-    /** Not cancellable by [selectPreset]: a preset chosen meanwhile is applied after the reset. */
+    /**
+     * Not cancellable by [selectPreset] (a preset chosen meanwhile is applied after the reset) nor
+     * by clearing the ViewModel.
+     */
     fun softReset() {
         val s = readySession() ?: return
         if (s.resetJob?.isActive == true) return
@@ -521,7 +532,7 @@ class HorizonViewModel(
         s.dirty.clear()
         s.overlay.clear()
         s.presetJob?.cancel()
-        s.resetJob = s.cs.launch {
+        s.resetJob = s.detached.launch {
             op(s) { d ->
                 try {
                     applySnapshot(s, d.softReset())

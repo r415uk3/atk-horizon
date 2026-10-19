@@ -604,4 +604,69 @@ class HorizonViewModelTest {
         advanceUntilIdle()
         assertEquals(encoded(preset("rock").bands), r.fake.flashBands)
     }
+
+    @Test
+    fun presetApplyCompletesWhenViewModelIsClearedMidSequence() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.fake.log.clear()
+        r.vm.selectPreset("rock")
+        advanceTimeBy(300) // bands written, inside the 1 s pause before 0x01
+        assertEquals(0, saves(r.fake))
+        r.vmScope.cancel()
+        advanceUntilIdle()
+        assertEquals(1, saves(r.fake))
+        assertEquals(encoded(preset("rock").bands), r.fake.flashBands)
+    }
+
+    @Test
+    fun softResetCompletesWhenViewModelIsClearedMidSequence() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        r.device.applyPreset(preset("delta").bands)
+        r.device.setDacOffset(2.0)
+        r.device.setAdcOffset(-1.0)
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        r.vm.softReset()
+        advanceTimeBy(300)
+        r.vmScope.cancel()
+        advanceUntilIdle()
+        assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
+        assertEquals(0.0, r.fake.flashDacOffset, 0.0)
+        assertEquals(0.0, r.fake.flashAdcOffset, 0.0)
+    }
+
+    @Test
+    fun flushPendingWaitsForARunningPresetApply() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.fake.log.clear()
+        r.vm.selectPreset("apex")
+        advanceTimeBy(100)
+        var savesWhenFlushed = -1
+        val flush = launch { r.vm.flushPending(); savesWhenFlushed = saves(r.fake) }
+        advanceTimeBy(100)
+        r.vmScope.cancel()
+        advanceUntilIdle()
+        assertTrue(flush.isCompleted)
+        assertEquals(1, savesWhenFlushed)
+        assertEquals(encoded(preset("apex").bands), r.fake.flashBands)
+    }
+
+    @Test
+    fun flushPendingWaitsForARunningSoftReset() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        r.device.applyPreset(preset("delta").bands)
+        r.device.setDacOffset(2.0)
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        r.vm.softReset()
+        advanceTimeBy(100)
+        var dacWhenFlushed = Double.NaN
+        val flush = launch { r.vm.flushPending(); dacWhenFlushed = r.fake.flashDacOffset }
+        advanceUntilIdle()
+        assertTrue(flush.isCompleted)
+        assertEquals(0.0, dacWhenFlushed, 0.0)
+        assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
+    }
 }
