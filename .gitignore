@@ -1,2 +1,7 @@
 .reference/
 .superpowers/
+build/
+.gradle/
+local.properties
+*.apk
+.idea/
