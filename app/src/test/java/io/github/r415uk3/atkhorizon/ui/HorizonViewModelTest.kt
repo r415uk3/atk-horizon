@@ -315,25 +315,165 @@ class HorizonViewModelTest {
         assertFalse(r.state.busy)
     }
 
-    @Test
-    fun failedTransferSurfacesTimeoutWithoutCrashing() = runTest {
-        val r = Rig(this, UsbState.NoDevice)
+    /** Transport wrapper over the rig's fake that can fail writes (or everything) on demand. */
+    private class Flaky(val r: Rig) : io.github.r415uk3.atkhorizon.protocol.HidTransport by r.fake {
         var failWrites = false
-        val flaky = object : io.github.r415uk3.atkhorizon.protocol.HidTransport by r.fake {
-            override suspend fun send(payload: ByteArray) {
-                if (failWrites && payload[0] == 0x01.toByte()) throw java.io.IOException("USB write failed (-1)")
-                r.fake.send(payload)
-            }
+        var failAll = false
+        var throwable: () -> Exception = { java.io.IOException("USB write failed (-1)") }
+        override suspend fun send(payload: ByteArray) {
+            if (failAll || (failWrites && payload[0] == 0x01.toByte())) throw throwable()
+            r.fake.send(payload)
         }
+    }
+
+    private fun TestScope.flakyRig(): Pair<Rig, Flaky> {
+        val r = Rig(this, UsbState.NoDevice)
+        val flaky = Flaky(r)
         r.usb.value = UsbState.Connected(HorizonDevice(HorizonLink(flaky, backgroundScope)))
         runCurrent()
         assertEquals(ConnState.Ready, r.state.conn)
-        failWrites = true
+        return r to flaky
+    }
+
+    @Test
+    fun failedTransferSurfacesTimeoutWithoutCrashing() = runTest {
+        val (r, flaky) = flakyRig()
+        flaky.failWrites = true
         r.vm.selectPreset("rock")
         advanceUntilIdle()
         assertEquals(UiError.Timeout, r.state.error)
         assertEquals(ConnState.Ready, r.state.conn)
         assertFalse(r.state.busy)
+        // The curve shows what is really in the device, not the preset that failed to apply.
+        assertEquals(r.fake.bands.map { it.band }, r.state.bands)
+        assertEquals("default", r.state.activePresetId)
+    }
+
+    @Test
+    fun commitTimeoutShowsDeviceValues() = runTest {
+        val (r, flaky) = flakyRig()
+        r.vm.setBand(4, EqBand(FilterType.Peak, 500, 2.0, -3.0))
+        assertEquals(-3.0, r.state.bands[4].gainDb, 0.0)
+        flaky.failWrites = true
+        advanceUntilIdle()
+        assertEquals(UiError.Timeout, r.state.error)
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(r.fake.bands.map { it.band }, r.state.bands)
+        assertEquals(EqBand.DEFAULTS, r.state.bands)
+        assertEquals("default", r.state.activePresetId)
+        // Nothing left pending: no retry loop.
+        r.fake.log.clear()
+        advanceUntilIdle()
+        assertTrue(r.fake.log.isEmpty())
+    }
+
+    @Test
+    fun offsetAndNcTimeoutRestoreDeviceValues() = runTest {
+        val (r, flaky) = flakyRig()
+        flaky.failWrites = true
+        r.vm.setDacOffset(1.5)
+        r.vm.setAdcOffset(-2.0)
+        r.vm.setNoiseCancelling(true)
+        assertEquals(1.5, r.state.dacOffset, 0.0)
+        advanceUntilIdle()
+        assertEquals(UiError.Timeout, r.state.error)
+        assertEquals(0.0, r.state.dacOffset, 0.0)
+        assertEquals(0.0, r.state.adcOffset, 0.0)
+        assertFalse(r.state.noiseCancelling)
+        assertEquals(ConnState.Ready, r.state.conn)
+    }
+
+    @Test
+    fun failedResyncMeansDisconnected() = runTest {
+        val (r, flaky) = flakyRig()
+        flaky.failAll = true
+        r.vm.selectPreset("rock")
+        advanceUntilIdle()
+        assertEquals(ConnState.Disconnected, r.state.conn)
+        assertEquals(UiError.Timeout, r.state.error)
+        assertFalse(r.state.busy)
+    }
+
+    @Test
+    fun unexpectedExceptionDoesNotCrash() = runTest {
+        val (r, flaky) = flakyRig()
+        flaky.throwable = { IllegalStateException("bug") }
+        flaky.failWrites = true
+        r.vm.setBand(1, EqBand(FilterType.Peak, 62, 1.0, 2.0))
+        advanceUntilIdle()
+        assertEquals(UiError.Timeout, r.state.error)
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(EqBand.DEFAULTS, r.state.bands)
+    }
+
+    @Test
+    fun revertToInvalidDeviceBandDoesNotCrash() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        // Band 2: fc 0 (e.g. set by the official app). Band 3: an unstable high shelf.
+        val fc0 = Packets.writeBand(2, EqBand(FilterType.Peak, 125, 0.75, 0.0)).also { it[27] = 0; it[28] = 0 }
+        val shelf = Packets.writeBand(3, EqBand(FilterType.Peak, 20, 5.0, 10.0)).also { it[33] = FilterType.HighShelf.code.toByte() }
+        r.fake.send(fc0)
+        r.fake.send(shelf)
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        assertEquals(0, r.state.bands[2].fc)
+        assertEquals(FilterType.HighShelf, r.state.bands[3].type)
+        r.fake.log.clear()
+        for (i in 2..3) {
+            r.vm.onBandDrag(i, EqBand(FilterType.Peak, 300, 1.0, 1.0))
+            r.vm.onBandDrag(i, EqBand(FilterType.HighShelf, 20, 5.0, 10.0))
+            assertEquals(UiError.UnstableFilter(i), r.state.error)
+        }
+        r.vm.onBandDragEnd(3)
+        advanceUntilIdle()
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(UiError.UnstableFilter(3), r.state.error)
+        assertEquals(r.fake.bands.map { it.band }, r.state.bands)
+        assertEquals(0, r.state.bands[2].fc)
+        // The invalid device values were never re-sent; nothing was saved.
+        assertTrue(r.fake.log.none { it.dir == 0x01 && it.cmd == 0x01 })
+    }
+
+    @Test
+    fun softResetNotCancelledByPresetSelect() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        r.device.setDacOffset(2.0)
+        r.device.setAdcOffset(-1.0)
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        r.vm.softReset()
+        advanceTimeBy(500) // inside the reset: waiting for its flash save, offsets not yet written
+        r.vm.selectPreset("rock")
+        advanceUntilIdle()
+        assertEquals(0.0, r.fake.dacOffset, 0.0)
+        assertEquals(0.0, r.fake.adcOffset, 0.0)
+        assertEquals(0.0, r.state.dacOffset, 0.0)
+        assertEquals(0.0, r.state.adcOffset, 0.0)
+        val rock = encoded(preset("rock").bands)
+        assertEquals(rock, r.fake.flashBands)
+        assertEquals(preset("rock").bands, r.state.bands)
+        assertEquals("rock", r.state.activePresetId)
+        assertNull(r.state.error)
+    }
+
+    @Test
+    fun flushPendingCommitsBeforeDebounce() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.fake.log.clear()
+        val edit = EqBand(FilterType.Peak, 2000, 1.2, -4.0)
+        r.vm.onBandDrag(6, edit)
+        advanceTimeBy(100)
+        r.vm.flushPending()
+        assertEquals(1, saves(r.fake))
+        assertEquals(edit, r.fake.flashBands[6].band)
+        advanceUntilIdle()
+        assertEquals(1, saves(r.fake))
+        assertEquals(edit, r.state.bands[6])
+        // Nothing pending: no-op.
+        r.vm.flushPending()
+        advanceUntilIdle()
+        assertEquals(1, saves(r.fake))
     }
 
     @Test

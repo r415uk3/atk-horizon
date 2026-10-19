@@ -18,9 +18,8 @@ import io.github.r415uk3.atkhorizon.protocol.Responses
 import io.github.r415uk3.atkhorizon.protocol.UnstableFilterException
 import io.github.r415uk3.atkhorizon.protocol.VerifyException
 import io.github.r415uk3.atkhorizon.usb.UsbState
-import java.io.IOException
-import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +59,11 @@ class HorizonViewModel(
 
     private inner class Session(val device: HorizonDevice) {
         val job = SupervisorJob(this@HorizonViewModel.scope.coroutineContext[Job])
-        val cs = CoroutineScope(this@HorizonViewModel.scope.coroutineContext + job)
+        /** Safety net: an unexpected exception outside [op] is surfaced, never crashes the app. */
+        val cs = CoroutineScope(
+            this@HorizonViewModel.scope.coroutineContext + job +
+                CoroutineExceptionHandler { _, _ -> if (session === this) setError(UiError.Timeout) },
+        )
         val io = Mutex()
         /** What the device last reported. Empty until the snapshot is read. */
         var deviceBands: List<DeviceBand> = emptyList()
@@ -72,8 +75,15 @@ class HorizonViewModel(
         val live = linkedMapOf<Int, EqBand>()
         var liveJob: Job? = null
         var debounceJob: Job? = null
-        /** Preset select / soft reset: the latest request wins, older ones are cancelled. */
+        /** Preset select: the latest request wins, older ones are cancelled. */
         var presetJob: Job? = null
+        /** Soft reset: never cancelled by a preset select (which queues behind it). */
+        var resetJob: Job? = null
+        var commitJob: Job? = null
+        /** Last offsets / NC the device confirmed; shown again when a write fails. */
+        var knownDac = 0.0
+        var knownAdc = 0.0
+        var knownNc = false
         var dacJob: Job? = null
         var adcJob: Job? = null
         var ncJob: Job? = null
@@ -143,10 +153,17 @@ class HorizonViewModel(
     // ---- Device I/O ----
 
     /**
-     * Runs [block] under the connection's I/O lock. Device loss and timeouts are surfaced here
-     * and yield null; [VerifyException] is the caller's to handle (inside [block], under the lock).
+     * Runs [block] under the connection's I/O lock and yields null on failure. Device loss →
+     * Disconnected. Any other failure (timeout, failed transfer, unexpected exception) → [failed]:
+     * [onFail] drops the op's unconfirmed display state, then the device is re-read.
+     * [VerifyException] is the caller's to handle (inside [block], under the lock).
      */
-    private suspend fun <T> op(s: Session, busy: Boolean = true, block: suspend (HorizonDevice) -> T): T? {
+    private suspend fun <T> op(
+        s: Session,
+        busy: Boolean = true,
+        onFail: () -> Unit = {},
+        block: suspend (HorizonDevice) -> T,
+    ): T? {
         if (busy) setBusy(s, +1)
         try {
             return s.io.withLock { block(s.device) }
@@ -154,20 +171,35 @@ class HorizonViewModel(
             throw e
         } catch (_: DeviceGoneException) {
             if (session === s) lostDevice(UiError.Disconnected)
-        } catch (_: TimeoutException) {
-            onNoAnswer(s)
-        } catch (_: IOException) {
-            // A failed transfer while the device is still attached: no answer, as with a timeout.
-            onNoAnswer(s)
+        } catch (_: Exception) {
+            // TimeoutException, IOException (failed transfer, device still attached), or a bug.
+            failed(s, onFail)
         } finally {
             if (busy) setBusy(s, -1)
         }
         return null
     }
 
-    private fun onNoAnswer(s: Session) {
+    /**
+     * A write may have been partly applied: show the last confirmed values at once, then re-read
+     * the device once. If that fails too, the device is treated as lost.
+     */
+    private suspend fun failed(s: Session, onFail: () -> Unit) {
         if (session !== s) return
-        if (_state.value.conn == ConnState.Loading) lostDevice(UiError.Timeout) else setError(UiError.Timeout)
+        if (_state.value.conn == ConnState.Loading) return lostDevice(UiError.Timeout)
+        setError(UiError.Timeout)
+        onFail()
+        _state.update { it.copy(dacOffset = s.knownDac, adcOffset = s.knownAdc, noiseCancelling = s.knownNc) }
+        publish(s)
+        try {
+            s.io.withLock { applySnapshot(s, s.device.readSnapshot()) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: DeviceGoneException) {
+            if (session === s) lostDevice(UiError.Disconnected)
+        } catch (_: Exception) {
+            if (session === s) lostDevice(UiError.Timeout)
+        }
     }
 
     private fun setBusy(s: Session, delta: Int) {
@@ -179,6 +211,9 @@ class HorizonViewModel(
 
     private fun applySnapshot(s: Session, snap: DeviceSnapshot) {
         s.deviceBands = snap.bands
+        s.knownDac = snap.dacOffset
+        s.knownAdc = snap.adcOffset
+        s.knownNc = snap.noiseCancelling
         if (session !== s) return
         _state.update {
             it.copy(
@@ -217,6 +252,10 @@ class HorizonViewModel(
         _state.update { it.copy(bands = bands, activePresetId = activeId) }
     }
 
+    /** Within the UI limits (a device band may hold e.g. fc 0 set by another app). */
+    private fun inUiRange(b: EqBand): Boolean =
+        b.fc in 20..20000 && b.q in 0.1..10.0 && b.gainDb in -10.0..10.0
+
     private fun encodable(b: EqBand): Boolean = try {
         Biquad.coefficientBytes(b.type, b.fc, b.q, b.gainDb)
         true
@@ -252,18 +291,23 @@ class HorizonViewModel(
         publish(s)
     }
 
-    /** The unstable value is not sent; the band shows (and, if edited, is restored to) the device's value. */
+    /**
+     * The unstable value is not sent; the band shows the device's value. If the band was edited
+     * (its live value may be in device RAM), the device value is re-sent, but only when it is
+     * itself a valid, encodable UI value.
+     */
     private fun rejectUnstable(s: Session, index: Int) {
         setError(UiError.UnstableFilter(index))
         s.live.remove(index)
-        if (index in s.dirty) {
-            val dev = s.deviceBands[index].band
+        val dev = s.deviceBands[index].band
+        if (index in s.dirty && inUiRange(dev) && encodable(dev)) {
             s.overlay[index] = dev
             s.dirty[index] = dev
             s.live[index] = dev
             ensureLiveSender(s)
             scheduleCommit(s)
         } else {
+            s.dirty.remove(index)
             s.overlay.remove(index)
         }
         publish(s)
@@ -286,13 +330,30 @@ class HorizonViewModel(
         s.debounceJob = s.cs.launch {
             delay(COMMIT_DEBOUNCE_MS)
             // Separate job: a later edit restarts the debounce but never cancels a running commit.
-            s.cs.launch { commit(s) }
+            s.commitJob = s.cs.launch { commit(s) }
         }
     }
 
+    /**
+     * Commits pending edits now (skipping the debounce) and waits for it, so edits reach flash
+     * before the USB claim is released (called from onStop). No-op when nothing is pending.
+     */
+    suspend fun flushPending() {
+        val s = session ?: return
+        val debouncing = s.debounceJob?.isActive == true
+        s.debounceJob?.cancel()
+        val job = if (debouncing || s.dirty.isNotEmpty()) {
+            s.cs.launch { commit(s) }.also { s.commitJob = it }
+        } else {
+            s.commitJob
+        }
+        job?.join()
+    }
+
     private suspend fun commit(s: Session) {
-        op(s) { d ->
-            val batch = s.dirty.toMap()
+        var batch = emptyMap<Int, EqBand>()
+        op(s, onFail = { settle(s, batch) }) { d ->
+            batch = s.dirty.toMap()
             if (batch.isEmpty()) return@op
             batch.keys.forEach { s.live.remove(it) }
             try {
@@ -331,7 +392,7 @@ class HorizonViewModel(
         publish(s)
         s.presetJob?.cancel()
         s.presetJob = s.cs.launch {
-            op(s) { d ->
+            op(s, onFail = { s.overlay.keys.retainAll(s.dirty.keys) }) { d ->
                 try {
                     val back = d.applyPreset(p.bands)
                     mergeBands(s, p.bands.indices.toList(), back)
@@ -379,41 +440,52 @@ class HorizonViewModel(
         val s = readySession() ?: return
         _state.update { it.copy(noiseCancelling = on) }
         s.ncJob?.cancel()
-        s.ncJob = s.cs.launch { verified(s) { it.setNoiseCancelling(on) } }
+        s.ncJob = s.cs.launch {
+            verified(s, onOk = { s.knownNc = on; _state.update { it.copy(noiseCancelling = on) } }) {
+                it.setNoiseCancelling(on)
+            }
+        }
     }
 
     fun setDacOffset(db: Double) {
         val s = readySession() ?: return
         _state.update { it.copy(dacOffset = db) }
         s.dacJob?.cancel()
-        s.dacJob = s.cs.launch { verified(s) { it.setDacOffset(db) } }
+        s.dacJob = s.cs.launch {
+            verified(s, onOk = { s.knownDac = db; _state.update { it.copy(dacOffset = db) } }) { it.setDacOffset(db) }
+        }
     }
 
     fun setAdcOffset(db: Double) {
         val s = readySession() ?: return
         _state.update { it.copy(adcOffset = db) }
         s.adcJob?.cancel()
-        s.adcJob = s.cs.launch { verified(s) { it.setAdcOffset(db) } }
+        s.adcJob = s.cs.launch {
+            verified(s, onOk = { s.knownAdc = db; _state.update { it.copy(adcOffset = db) } }) { it.setAdcOffset(db) }
+        }
     }
 
-    private suspend fun verified(s: Session, block: suspend (HorizonDevice) -> Unit) {
+    private suspend fun verified(s: Session, onOk: () -> Unit, block: suspend (HorizonDevice) -> Unit) {
         op(s) { d ->
             try {
                 block(d)
+                onOk()
             } catch (e: VerifyException) {
                 showDeviceAfterVerify(s, d, e)
             }
         }
     }
 
+    /** Not cancellable by [selectPreset]: a preset chosen meanwhile is applied after the reset. */
     fun softReset() {
         val s = readySession() ?: return
+        if (s.resetJob?.isActive == true) return
         s.debounceJob?.cancel()
         s.live.clear()
         s.dirty.clear()
         s.overlay.clear()
         s.presetJob?.cancel()
-        s.presetJob = s.cs.launch {
+        s.resetJob = s.cs.launch {
             op(s) { d ->
                 try {
                     applySnapshot(s, d.softReset())
