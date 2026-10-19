@@ -33,6 +33,8 @@
     <string name="error_timeout">No response from the headset.</string>
     <string name="error_unstable_filter">Band %1$d: these values make an unstable filter, so they were not sent.</string>
     <string name="error_preset_storage">Custom presets storage is damaged. Nothing was overwritten.</string>
+    <string name="error_suspicious_offset">The headset reports a gain offset outside ±10 dB, which looks wrong, so it is not shown. Set it on the Device or Microphone tab.</string>
+    <string name="error_suspicious_offset_blocked">The headset reports a playback gain offset outside ±10 dB, which looks wrong. Nothing was sent, so it is not written back. Set the offset on the Device tab first.</string>
     <string name="action_dismiss">Dismiss</string>
     <string name="action_cancel">Cancel</string>
 

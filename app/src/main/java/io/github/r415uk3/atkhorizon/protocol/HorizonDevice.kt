@@ -12,6 +12,19 @@ data class DeviceSnapshot(
 
 class VerifyException(val mismatchedBands: List<Int>) : IllegalStateException("Verification failed, bands: $mismatchedBands")
 
+/** Gain offsets outside ±[OFFSET_LIMIT_DB] are the UI range limit and treated as implausible reads. */
+const val OFFSET_LIMIT_DB = 10.0
+
+fun plausibleOffset(db: Double): Boolean = db in -OFFSET_LIMIT_DB..OFFSET_LIMIT_DB
+
+/**
+ * The device reported a value that is implausible (e.g. a DAC offset outside ±10 dB: the 0x03 read
+ * parse is unverified on hardware). Thrown before anything is written, so the wild value is never
+ * written back.
+ */
+class SuspiciousDeviceValueException(what: String, val value: Double) :
+    IllegalStateException("Implausible $what read from the device: $value")
+
 /** High-level verified operations over [HorizonLink]. Never sends 0x05/0x0D/0x17/0xFF. */
 class HorizonDevice(private val link: HorizonLink) {
     suspend fun readSnapshot(): DeviceSnapshot {
@@ -29,11 +42,21 @@ class HorizonDevice(private val link: HorizonLink) {
         link.write(Packets.commitCoefficients())
     }
 
-    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> {
+    /**
+     * The flash-save scheme: 0x09 per band → 0x0A → 0x03 (current DAC offset) → 1 s → 0x01, then
+     * read back and verify. The current DAC offset is read first and must be plausible
+     * ([SuspiciousDeviceValueException] otherwise, before any write).
+     */
+    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> = commit(bands, dacOverride = null)
+
+    /** [dacOverride]: DAC offset to write instead of the device's current one (no read). */
+    private suspend fun commit(bands: Map<Int, EqBand>, dacOverride: Double?): List<DeviceBand> {
         if (bands.isEmpty()) return emptyList()
+        val dac = dacOverride ?: Responses.offsetDb(link.request(Packets.readDacOffset())).also {
+            if (!plausibleOffset(it)) throw SuspiciousDeviceValueException("DAC offset", it)
+        }
         for ((i, b) in bands) link.write(Packets.writeBand(i, b))
         link.write(Packets.commitCoefficients())
-        val dac = Responses.offsetDb(link.request(Packets.readDacOffset()))
         link.write(Packets.setDacOffset(dac))
         link.delay(1000)
         link.write(Packets.saveToFlash())
@@ -68,8 +91,12 @@ class HorizonDevice(private val link: HorizonLink) {
         }
     }
 
+    /**
+     * Default preset, DAC and ADC offsets 0, saved and re-read. The preset is written with a 0 dB
+     * DAC offset (it is zeroed right after anyway), so a reset also recovers from an implausible one.
+     */
     suspend fun softReset(): DeviceSnapshot {
-        applyPreset(EqBand.DEFAULTS)
+        commit(EqBand.DEFAULTS.mapIndexed { i, b -> i to b }.toMap(), dacOverride = 0.0)
         setDacOffset(0.0)
         setAdcOffset(0.0)
         return readSnapshot()

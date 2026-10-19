@@ -24,7 +24,8 @@ class HorizonDeviceTest {
         val r = Rig(this)
         r.dev.applyPreset(custom)
         val pairs = r.fake.log.map { it.dir to it.cmd }
-        val expected = List(8) { 0x01 to 0x09 } + listOf(0x01 to 0x0A, 0x80 to 0x03, 0x01 to 0x03, 0x01 to 0x01) +
+        // The DAC offset is read (and sanity-checked) before anything is written; the writes keep Hub's order.
+        val expected = listOf(0x80 to 0x03) + List(8) { 0x01 to 0x09 } + listOf(0x01 to 0x0A, 0x01 to 0x03, 0x01 to 0x01) +
             List(8) { 0x80 to 0x09 }
         assertEquals(expected, pairs)
         val dac = r.fake.log.first { it.dir == 0x01 && it.cmd == 0x03 }
@@ -159,5 +160,38 @@ class HorizonDeviceTest {
         assertEquals(8, s.bands.size)
         val cmds = r.fake.log.map { it.cmd }
         assertEquals(listOf(0x0C) + List(8) { 0x09 } + listOf(0x03, 0x02, 0x1B), cmds)
+    }
+
+    @Test
+    fun commitWithImplausibleDacOffsetWritesNothing() = runTest {
+        val r = Rig(this)
+        for (dac in listOf(10.5, -40.0, 127.0)) {
+            r.fake.dacOffset = dac
+            r.fake.log.clear()
+            val e = runCatching { r.dev.applyPreset(custom) }.exceptionOrNull()
+            assertTrue("dac $dac: $e", e is SuspiciousDeviceValueException)
+            assertTrue(r.fake.log.none { it.dir == 0x01 })
+            assertEquals(EqBand.DEFAULTS, r.fake.bands.map { it.band })
+            assertTrue(runCatching { r.dev.commitBands(mapOf(1 to custom[1])) }.exceptionOrNull() is SuspiciousDeviceValueException)
+            assertTrue(r.fake.log.none { it.dir == 0x01 })
+        }
+        // Inside the UI range (inclusive) the commit proceeds and writes that value back.
+        r.fake.dacOffset = -10.0
+        r.dev.applyPreset(custom)
+        assertEquals(-10.0, r.fake.flashDacOffset, 0.0)
+    }
+
+    @Test
+    fun softResetRecoversFromImplausibleDacOffset() = runTest {
+        val r = Rig(this)
+        r.fake.dacOffset = 64.0
+        r.fake.adcOffset = -64.0
+        custom.forEachIndexed { i, b -> r.dev.liveBand(i, b) }
+        val snap = r.dev.softReset()
+        assertEquals(EqBand.DEFAULTS, snap.bands.map { it.band })
+        assertEquals(0.0, r.fake.flashDacOffset, 0.0)
+        assertEquals(0.0, r.fake.flashAdcOffset, 0.0)
+        assertEquals(0.0, snap.dacOffset, 0.0)
+        assertEquals(0.0, snap.adcOffset, 0.0)
     }
 }

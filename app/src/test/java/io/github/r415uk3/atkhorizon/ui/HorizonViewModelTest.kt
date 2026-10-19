@@ -72,8 +72,8 @@ class HorizonViewModelTest {
         assertEquals("1.2.3", r.state.firmware)
         assertEquals(EqBand.DEFAULTS, r.state.bands)
         assertTrue(r.state.noiseCancelling)
-        assertEquals(1.5, r.state.dacOffset, 0.0)
-        assertEquals(-2.0, r.state.adcOffset, 0.0)
+        assertEquals(1.5, r.state.dacOffset!!, 0.0)
+        assertEquals(-2.0, r.state.adcOffset!!, 0.0)
         assertEquals(BuiltInPresets.all, r.state.presets)
         assertFalse(r.state.busy)
         assertNull(r.state.error)
@@ -257,12 +257,12 @@ class HorizonViewModelTest {
         r.usb.value = UsbState.Connected(r.device)
         runCurrent()
         assertEquals("delta", r.state.activePresetId)
-        assertEquals(2.0, r.state.dacOffset, 0.0)
+        assertEquals(2.0, r.state.dacOffset!!, 0.0)
         r.vm.softReset()
         advanceUntilIdle()
         assertEquals(EqBand.DEFAULTS, r.state.bands)
-        assertEquals(0.0, r.state.dacOffset, 0.0)
-        assertEquals(0.0, r.state.adcOffset, 0.0)
+        assertEquals(0.0, r.state.dacOffset!!, 0.0)
+        assertEquals(0.0, r.state.adcOffset!!, 0.0)
         assertEquals("default", r.state.activePresetId)
         assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
         assertNull(r.state.error)
@@ -402,11 +402,11 @@ class HorizonViewModelTest {
         r.vm.setDacOffset(1.5)
         r.vm.setAdcOffset(-2.0)
         r.vm.setNoiseCancelling(true)
-        assertEquals(1.5, r.state.dacOffset, 0.0)
+        assertEquals(1.5, r.state.dacOffset!!, 0.0)
         advanceUntilIdle()
         assertEquals(UiError.Timeout, r.state.error)
-        assertEquals(0.0, r.state.dacOffset, 0.0)
-        assertEquals(0.0, r.state.adcOffset, 0.0)
+        assertEquals(0.0, r.state.dacOffset!!, 0.0)
+        assertEquals(0.0, r.state.adcOffset!!, 0.0)
         assertFalse(r.state.noiseCancelling)
         assertEquals(ConnState.Ready, r.state.conn)
     }
@@ -475,8 +475,8 @@ class HorizonViewModelTest {
         advanceUntilIdle()
         assertEquals(0.0, r.fake.dacOffset, 0.0)
         assertEquals(0.0, r.fake.adcOffset, 0.0)
-        assertEquals(0.0, r.state.dacOffset, 0.0)
-        assertEquals(0.0, r.state.adcOffset, 0.0)
+        assertEquals(0.0, r.state.dacOffset!!, 0.0)
+        assertEquals(0.0, r.state.adcOffset!!, 0.0)
         val rock = encoded(preset("rock").bands)
         assertEquals(rock, r.fake.flashBands)
         assertEquals(preset("rock").bands, r.state.bands)
@@ -549,8 +549,8 @@ class HorizonViewModelTest {
         assertEquals(1.5, r.fake.dacOffset, 0.0)
         assertEquals(-0.5, r.fake.adcOffset, 0.0)
         assertTrue(r.fake.nc)
-        assertEquals(1.5, r.state.dacOffset, 0.0)
-        assertEquals(-0.5, r.state.adcOffset, 0.0)
+        assertEquals(1.5, r.state.dacOffset!!, 0.0)
+        assertEquals(-0.5, r.state.adcOffset!!, 0.0)
         assertTrue(r.state.noiseCancelling)
 
         r.fake.dropNcWrites = true
@@ -567,5 +567,41 @@ class HorizonViewModelTest {
         r.vm.setThemeMode(io.github.r415uk3.atkhorizon.data.ThemeMode.Dark)
         runCurrent()
         assertEquals(io.github.r415uk3.atkhorizon.data.ThemeMode.Dark, r.state.themeMode)
+    }
+
+    @Test
+    fun implausibleOffsetsAreNotShownAndBlockEqWrites() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        r.fake.dacOffset = 50.0
+        r.fake.adcOffset = -1.5
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertNull(r.state.dacOffset)
+        assertEquals(-1.5, r.state.adcOffset!!, 0.0)
+        assertEquals(UiError.SuspiciousOffset(changeBlocked = false), r.state.error)
+
+        r.fake.log.clear()
+        r.vm.setBand(2, EqBand(FilterType.Peak, 125, 2.0, 5.0))
+        advanceUntilIdle()
+        assertEquals(UiError.SuspiciousOffset(changeBlocked = true), r.state.error)
+        assertTrue(r.fake.log.none { it.dir == 0x01 })
+        assertEquals(EqBand.DEFAULTS, r.state.bands)
+        assertEquals(ConnState.Ready, r.state.conn)
+
+        r.vm.selectPreset("rock")
+        advanceUntilIdle()
+        assertEquals(UiError.SuspiciousOffset(changeBlocked = true), r.state.error)
+        assertTrue(r.fake.log.none { it.dir == 0x01 })
+        assertEquals(EqBand.DEFAULTS, r.state.bands)
+        assertEquals("default", r.state.activePresetId)
+
+        // Setting the offset explicitly is the way out; then EQ edits go through.
+        r.vm.setDacOffset(0.0)
+        advanceUntilIdle()
+        assertEquals(0.0, r.state.dacOffset!!, 0.0)
+        r.vm.selectPreset("rock")
+        advanceUntilIdle()
+        assertEquals(encoded(preset("rock").bands), r.fake.flashBands)
     }
 }

@@ -15,6 +15,8 @@ import io.github.r415uk3.atkhorizon.protocol.EqBand
 import io.github.r415uk3.atkhorizon.protocol.HorizonDevice
 import io.github.r415uk3.atkhorizon.protocol.Packets
 import io.github.r415uk3.atkhorizon.protocol.Responses
+import io.github.r415uk3.atkhorizon.protocol.SuspiciousDeviceValueException
+import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
 import io.github.r415uk3.atkhorizon.protocol.UnstableFilterException
 import io.github.r415uk3.atkhorizon.protocol.VerifyException
 import io.github.r415uk3.atkhorizon.usb.UsbState
@@ -88,9 +90,9 @@ class HorizonViewModel(
         var presetJob: Job? = null
         /** Soft reset: never cancelled by a preset select (which queues behind it). */
         var resetJob: Job? = null
-        /** Last offsets / NC the device confirmed; shown again when a write fails. */
-        var knownDac = 0.0
-        var knownAdc = 0.0
+        /** Last offsets / NC the device confirmed; shown again when a write fails. Null: implausible. */
+        var knownDac: Double? = 0.0
+        var knownAdc: Double? = 0.0
         var knownNc = false
         var dacJob: Job? = null
         var adcJob: Job? = null
@@ -182,6 +184,14 @@ class HorizonViewModel(
             throw e
         } catch (_: DeviceGoneException) {
             if (session === s) lostDevice(UiError.Disconnected)
+        } catch (_: SuspiciousDeviceValueException) {
+            // Refused before anything was written: the device still holds what is displayed
+            // without the op's unconfirmed state.
+            if (session === s) {
+                onFail()
+                setError(UiError.SuspiciousOffset(changeBlocked = true))
+                publish(s)
+            }
         } catch (_: Exception) {
             // TimeoutException, IOException (failed transfer, device still attached), or a bug.
             failed(s, onFail)
@@ -220,20 +230,24 @@ class HorizonViewModel(
 
     private fun setError(e: UiError) = _state.update { it.copy(error = e) }
 
+    /** An implausible offset (outside ±10 dB) is shown as unknown, with an error. */
     private fun applySnapshot(s: Session, snap: DeviceSnapshot) {
+        val dac = snap.dacOffset.takeIf(::plausibleOffset)
+        val adc = snap.adcOffset.takeIf(::plausibleOffset)
         s.deviceBands = snap.bands
-        s.knownDac = snap.dacOffset
-        s.knownAdc = snap.adcOffset
+        s.knownDac = dac
+        s.knownAdc = adc
         s.knownNc = snap.noiseCancelling
         if (session !== s) return
         _state.update {
             it.copy(
                 firmware = snap.firmware,
-                dacOffset = snap.dacOffset,
-                adcOffset = snap.adcOffset,
+                dacOffset = dac,
+                adcOffset = adc,
                 noiseCancelling = snap.noiseCancelling,
             )
         }
+        if (dac == null || adc == null) setError(UiError.SuspiciousOffset(changeBlocked = false))
         publish(s)
     }
 

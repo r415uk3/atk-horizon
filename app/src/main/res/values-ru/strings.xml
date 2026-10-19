@@ -32,6 +32,8 @@
     <string name="error_timeout">Гарнитура не отвечает.</string>
     <string name="error_unstable_filter">Полоса %1$d: с такими значениями фильтр неустойчив, они не отправлены.</string>
     <string name="error_preset_storage">Хранилище пользовательских пресетов повреждено. Ничего не перезаписано.</string>
+    <string name="error_suspicious_offset">Гарнитура сообщает смещение усиления за пределами ±10 дБ — похоже на ошибку, поэтому оно не показано. Задайте его на вкладке «Устройство» или «Микрофон».</string>
+    <string name="error_suspicious_offset_blocked">Гарнитура сообщает смещение громкости за пределами ±10 дБ — похоже на ошибку. Ничего не отправлено, чтобы не записать это значение обратно. Сначала задайте смещение на вкладке «Устройство».</string>
     <string name="action_dismiss">Закрыть</string>
     <string name="action_cancel">Отмена</string>
 

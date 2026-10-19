@@ -34,12 +34,13 @@ internal fun snapOffset(db: Double): Double =
 
 /**
  * A labelled gain-offset slider. While dragging it shows the local value; the value is sent to
- * [onCommit] on release, after which it follows [value] (the ViewModel state).
+ * [onCommit] on release, after which it follows [value] (the ViewModel state). A null [value]
+ * (implausible device value) shows "—" with the thumb at 0 dB.
  */
 @Composable
 internal fun GainSlider(
     label: String,
-    value: Double,
+    value: Double?,
     enabled: Boolean,
     onCommit: (Double) -> Unit,
     modifier: Modifier = Modifier,
@@ -53,13 +54,13 @@ internal fun GainSlider(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, color = c.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
             Text(
-                stringResource(R.string.unit_db, String.format(Locale.getDefault(), "%+.1f", shown)),
+                shown?.let { stringResource(R.string.unit_db, String.format(Locale.getDefault(), "%+.1f", it)) } ?: "—",
                 color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
         Slider(
-            value = shown.toFloat().coerceIn(OFFSET_MIN_DB.toFloat(), OFFSET_MAX_DB.toFloat()),
+            value = (shown ?: 0.0).toFloat().coerceIn(OFFSET_MIN_DB.toFloat(), OFFSET_MAX_DB.toFloat()),
             onValueChange = { drag = snapOffset(it.toDouble()) },
             onValueChangeFinished = {
                 drag?.let(onCommit)

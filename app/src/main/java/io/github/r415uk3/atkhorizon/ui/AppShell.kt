@@ -75,6 +75,8 @@ internal fun errorMessage(e: UiError): Pair<Int, Int?> = when (e) {
     // Bands are 0-based internally, 1-based for people.
     is UiError.UnstableFilter -> R.string.error_unstable_filter to e.band + 1
     UiError.PresetStorage -> R.string.error_preset_storage to null
+    is UiError.SuspiciousOffset ->
+        (if (e.changeBlocked) R.string.error_suspicious_offset_blocked else R.string.error_suspicious_offset) to null
 }
 
 private val TabBarHeight = 54.dp

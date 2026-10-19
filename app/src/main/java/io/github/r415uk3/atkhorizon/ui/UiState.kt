@@ -26,6 +26,11 @@ sealed interface UiError {
     data class UnstableFilter(val band: Int) : UiError
     /** Custom presets on disk are unreadable; the store refuses to overwrite them. */
     data object PresetStorage : UiError
+    /**
+     * The device reports a gain offset outside ±10 dB (implausible; not shown). [changeBlocked]: an
+     * EQ change was refused before anything was written, so the wild DAC value is not written back.
+     */
+    data class SuspiciousOffset(val changeBlocked: Boolean) : UiError
 }
 
 data class UiState(
@@ -36,8 +41,9 @@ data class UiState(
     val presets: List<Preset> = emptyList(),
     /** Null means "Custom". */
     val activePresetId: String? = null,
-    val dacOffset: Double = 0.0,
-    val adcOffset: Double = 0.0,
+    /** Null: unknown (the device reported an implausible value). */
+    val dacOffset: Double? = 0.0,
+    val adcOffset: Double? = 0.0,
     val noiseCancelling: Boolean = false,
     val busy: Boolean = false,
     val error: UiError? = null,
