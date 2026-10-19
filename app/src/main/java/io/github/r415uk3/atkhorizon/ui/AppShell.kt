@@ -58,6 +58,9 @@ import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
 import io.github.r415uk3.atkhorizon.ui.glass.LocalHazeState
 import io.github.r415uk3.atkhorizon.ui.glass.PillShape
 import io.github.r415uk3.atkhorizon.ui.eq.BandSheet
+import io.github.r415uk3.atkhorizon.ui.screens.DeviceScreen
+import io.github.r415uk3.atkhorizon.ui.screens.MicScreen
+import io.github.r415uk3.atkhorizon.ui.screens.SettingsScreen
 import io.github.r415uk3.atkhorizon.ui.screens.SoundScreen
 import io.github.r415uk3.atkhorizon.ui.screens.StatusScreen
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
@@ -120,7 +123,10 @@ fun AppShell(vm: HorizonViewModel) {
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when {
-                        settingsOpen -> PlaceholderScreen(R.string.theme_title)
+                        settingsOpen -> SettingsScreen(
+                            state.themeMode, vm::setThemeMode,
+                            modifier = Modifier.padding(bottom = ContentBottomInset),
+                        )
                         !hasDevice -> StatusScreen(
                             state.conn,
                             onAction = if (state.conn == ConnState.Disconnected) vm::retryConnect else vm::retryPermission,
@@ -130,12 +136,8 @@ fun AppShell(vm: HorizonViewModel) {
                             state, vm, onEditBand = { editing = it },
                             modifier = Modifier.padding(bottom = ContentBottomInset),
                         )
-                        else -> PlaceholderScreen(
-                            when (tab) {
-                                Tab.Mic -> R.string.mic_noise_cancelling
-                                else -> R.string.device_model
-                            },
-                        )
+                        tab == Tab.Mic -> MicScreen(state, vm, modifier = Modifier.padding(bottom = ContentBottomInset))
+                        else -> DeviceScreen(state, vm, modifier = Modifier.padding(bottom = ContentBottomInset))
                     }
                 }
             }
@@ -187,20 +189,6 @@ private fun Header(settingsOpen: Boolean, subtitle: String?, onToggleSettings: (
             ) {
                 Text(if (settingsOpen) "✕" else "⚙︎", color = c.ink, fontSize = 18.sp)
             }
-        }
-    }
-}
-
-/** Stand-in until the real screen lands (Mic, Device, Settings: Task 11). */
-@Composable
-private fun PlaceholderScreen(title: Int) {
-    val c = LocalHorizonColors.current
-    Column(Modifier.fillMaxSize().padding(bottom = ContentBottomInset)) {
-        GlassSurface(Modifier.fillMaxWidth()) {
-            Text(
-                stringResource(title), color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(16.dp),
-            )
         }
     }
 }
