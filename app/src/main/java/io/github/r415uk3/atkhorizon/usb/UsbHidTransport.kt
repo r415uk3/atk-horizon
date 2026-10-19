@@ -6,6 +6,7 @@ import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.os.SystemClock
 import android.util.Log
+import io.github.r415uk3.atkhorizon.BuildConfig
 import io.github.r415uk3.atkhorizon.protocol.DeviceGoneException
 import io.github.r415uk3.atkhorizon.protocol.HidTransport
 import io.github.r415uk3.atkhorizon.protocol.REPORT_ID
@@ -119,7 +120,7 @@ class UsbHidTransport(
                 continue
             }
             if (n == 0) continue
-            Log.d(TAG, "IN  ${buf.copyOf(n).toHex()}")
+            if (BuildConfig.DEBUG) Log.d(TAG, "IN  ${buf.copyOf(n).toHex()}")
             if (buf[0] == REPORT_ID) {
                 val payload = ByteArray(REPORT_SIZE - 1)
                 buf.copyInto(payload, 0, 1, n)
@@ -140,7 +141,7 @@ class UsbHidTransport(
         val buf = ByteArray(REPORT_SIZE)
         buf[0] = REPORT_ID
         payload.copyInto(buf, 1, 0, minOf(payload.size, REPORT_SIZE - 1))
-        Log.d(TAG, "OUT ${buf.toHex()}")
+        if (BuildConfig.DEBUG) Log.d(TAG, "OUT ${buf.toHex()}")
         val n = transfer {
             if (outEp != null) {
                 conn.bulkTransfer(outEp, buf, buf.size, WRITE_TIMEOUT_MS)

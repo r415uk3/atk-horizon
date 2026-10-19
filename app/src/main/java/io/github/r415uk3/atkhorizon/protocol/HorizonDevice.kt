@@ -33,8 +33,10 @@ class SuspiciousDeviceValueException(what: String, val value: Double) :
  * Every public operation holds this device's lock for its whole multi-packet sequence, so two
  * callers sharing the device (e.g. an old ViewModel's commit and a new one's snapshot read) never
  * interleave on the wire; waiting callers run in call order.
+ *
+ * @param debugLog debug builds only: receives a [Diagnostics] line per band and per snapshot read.
  */
-class HorizonDevice(private val link: HorizonLink) {
+class HorizonDevice(private val link: HorizonLink, private val debugLog: ((String) -> Unit)? = null) {
     private val lock = Mutex()
 
     suspend fun readSnapshot(): DeviceSnapshot = lock.withLock { snapshot() }
@@ -91,7 +93,12 @@ class HorizonDevice(private val link: HorizonLink) {
         val dac = Responses.offsetDb(link.request(Packets.readDacOffset()))
         val adc = Responses.offsetDb(link.request(Packets.readAdcOffset()))
         val nc = Responses.noiseCancelling(link.request(Packets.readNoiseCancelling()))
-        return DeviceSnapshot(fw, bands, dac, adc, nc)
+        val snap = DeviceSnapshot(fw, bands, dac, adc, nc)
+        debugLog?.let { log ->
+            bands.forEach { log(Diagnostics.bandLine(it)) }
+            log(Diagnostics.snapshotLine(snap))
+        }
+        return snap
     }
 
     /** [dacOverride]: DAC offset to write instead of the device's current one (no read). */

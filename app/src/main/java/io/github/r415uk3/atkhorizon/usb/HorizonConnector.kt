@@ -11,6 +11,7 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.util.Log
+import io.github.r415uk3.atkhorizon.BuildConfig
 import io.github.r415uk3.atkhorizon.protocol.HidTransport
 import io.github.r415uk3.atkhorizon.protocol.HorizonDevice
 import io.github.r415uk3.atkhorizon.protocol.HorizonLink
@@ -188,7 +189,8 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
                 _state.value = UsbState.NoDevice
                 return@start
             }
-            session = Session(opened, HorizonDevice(HorizonLink(opened.transport, scope)))
+            val debugLog: ((String) -> Unit)? = if (BuildConfig.DEBUG) { m -> Log.d(TAG, m) } else null
+            session = Session(opened, HorizonDevice(HorizonLink(opened.transport, scope), debugLog))
             refresh()
         }
     }
