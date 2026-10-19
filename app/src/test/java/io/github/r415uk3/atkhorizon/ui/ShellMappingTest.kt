@@ -1,6 +1,7 @@
 package io.github.r415uk3.atkhorizon.ui
 
 import io.github.r415uk3.atkhorizon.R
+import io.github.r415uk3.atkhorizon.data.ImportError as IE
 import io.github.r415uk3.atkhorizon.ui.screens.statusContent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -19,6 +20,16 @@ class ShellMappingTest {
         assertEquals(R.string.error_preset_storage to null, errorMessage(UiError.PresetStorage))
         // Band numbers are shown 1-based.
         assertEquals(R.string.error_unstable_filter to 3, errorMessage(UiError.UnstableFilter(2)))
+    }
+
+    @Test
+    fun everyImportErrorHasItsOwnMessage() {
+        val all = listOf(
+            IE.NotJson, IE.TooLarge, IE.Unreadable, IE.WrongShape, IE.WrongType, IE.WrongFilterCount(9), IE.BadFilterIndex,
+            IE.UnknownFilterType(2), IE.BandOutOfRange(2), IE.BandUnstable(2),
+        )
+        assertEquals(all.size, all.map { errorMessage(UiError.ImportFailed(it)).first }.toSet().size)
+        assertEquals(R.string.import_error_band_range to 3, errorMessage(UiError.ImportFailed(IE.BandOutOfRange(2))))
     }
 
     @Test

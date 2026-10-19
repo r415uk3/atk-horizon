@@ -4,11 +4,12 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.r415uk3.atkhorizon.data.CorruptPresetsException
+import io.github.r415uk3.atkhorizon.data.ImportError
+import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.data.PresetStore
 import io.github.r415uk3.atkhorizon.data.SettingsStore
 import io.github.r415uk3.atkhorizon.data.ThemeMode
 import io.github.r415uk3.atkhorizon.data.matchPreset
-import io.github.r415uk3.atkhorizon.protocol.Biquad
 import io.github.r415uk3.atkhorizon.protocol.DeviceBand
 import io.github.r415uk3.atkhorizon.protocol.DeviceGoneException
 import io.github.r415uk3.atkhorizon.protocol.DeviceSnapshot
@@ -17,9 +18,11 @@ import io.github.r415uk3.atkhorizon.protocol.HorizonDevice
 import io.github.r415uk3.atkhorizon.protocol.Packets
 import io.github.r415uk3.atkhorizon.protocol.Responses
 import io.github.r415uk3.atkhorizon.protocol.SuspiciousDeviceValueException
-import io.github.r415uk3.atkhorizon.protocol.UnstableFilterException
 import io.github.r415uk3.atkhorizon.protocol.VerifyException
+import io.github.r415uk3.atkhorizon.protocol.encodable
+import io.github.r415uk3.atkhorizon.protocol.inUiRange
 import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
+import io.github.r415uk3.atkhorizon.protocol.validPresetBands
 import io.github.r415uk3.atkhorizon.usb.UsbState
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -32,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -286,17 +290,6 @@ class HorizonViewModel(
         _state.update { it.copy(bands = bands, activePresetId = activeId) }
     }
 
-    /** Within the UI limits (a device band may hold e.g. fc 0 set by another app). */
-    private fun inUiRange(b: EqBand): Boolean =
-        b.fc in 20..20000 && b.q in 0.1..10.0 && b.gainDb in -10.0..10.0
-
-    private fun encodable(b: EqBand): Boolean = try {
-        Biquad.coefficientBytes(b.type, b.fc, b.q, b.gainDb)
-        true
-    } catch (_: UnstableFilterException) {
-        false
-    }
-
     // ---- Band edits ----
 
     /** Called continuously while dragging: throttled live write (latest wins) + debounced commit. */
@@ -314,7 +307,7 @@ class HorizonViewModel(
         val s = readySession() ?: return
         if (index !in s.deviceBands.indices) return
         val b = band.clamped()
-        if (!encodable(b)) return rejectUnstable(s, index)
+        if (!b.encodable()) return rejectUnstable(s, index)
         s.overlay[index] = b
         s.dirty[index] = b
         if (live) {
@@ -334,7 +327,7 @@ class HorizonViewModel(
         setError(UiError.UnstableFilter(index))
         s.live.remove(index)
         val dev = s.deviceBands[index].band
-        if (index in s.dirty && inUiRange(dev) && encodable(dev)) {
+        if (index in s.dirty && dev.inUiRange() && dev.encodable()) {
             s.overlay[index] = dev
             s.dirty[index] = dev
             s.live[index] = dev
@@ -424,13 +417,6 @@ class HorizonViewModel(
 
     // ---- Presets ----
 
-    /** [bands] clamped to the UI limits, and the index of the first band still invalid (NaN) or unstable (or null). */
-    private fun validPresetBands(bands: List<EqBand>): Pair<List<EqBand>, Int?> {
-        val clamped = bands.map { it.clamped() }
-        val bad = clamped.indexOfFirst { !inUiRange(it) || !encodable(it) }
-        return clamped to bad.takeIf { it >= 0 }
-    }
-
     /**
      * A stored preset is validated before anything is written: it must have 8 bands (else
      * [UiError.PresetStorage]); values are clamped to the UI limits, and a band that is still
@@ -442,7 +428,11 @@ class HorizonViewModel(
         if (stored.bands.size != s.deviceBands.size) return setError(UiError.PresetStorage)
         val (bands, bad) = validPresetBands(stored.bands)
         if (bad != null) return setError(UiError.UnstableFilter(bad))
-        val p = stored.copy(bands = bands)
+        applyPreset(s, stored.copy(bands = bands))
+    }
+
+    /** Shows [p] (already validated, 8 bands) at once and writes it through the verified preset path. */
+    private fun applyPreset(s: Session, p: Preset) {
         s.debounceJob?.cancel()
         s.live.clear()
         s.dirty.clear()
@@ -481,6 +471,38 @@ class HorizonViewModel(
                 _state.update { it.copy(activePresetId = p.id) }
             }
         }
+    }
+
+    /**
+     * Imports a preset file's bands as a new custom preset (a name that is taken gets " (2)", " (3)"…)
+     * and applies it through the same verified path as [selectPreset]. Bands are validated again
+     * here, so nothing invalid reaches the device whatever the caller passes. If the store write
+     * fails nothing is applied.
+     */
+    fun importPreset(name: String, bands: List<EqBand>) {
+        val s0 = readySession() ?: return
+        if (bands.size != s0.deviceBands.size) return setError(UiError.ImportFailed(ImportError.WrongFilterCount(bands.size)))
+        val (valid, bad) = validPresetBands(bands)
+        if (bad != null) return setError(UiError.UnstableFilter(bad))
+        scope.launch {
+            storage {
+                val taken = presetStore.presets.first().map { it.name.trim().lowercase() }.toSet()
+                val p = presetStore.create(uniqueName(name.trim(), taken), valid)
+                _state.update { st -> if (st.presets.any { it.id == p.id }) st else st.copy(presets = st.presets + p) }
+                // The session may have changed while the store was writing; the preset stays saved.
+                readySession()?.takeIf { it === s0 }?.let { applyPreset(it, p) }
+            }
+        }
+    }
+
+    /** A file that could not be read or parsed; nothing is saved or sent. */
+    fun importFailed(reason: ImportError) = setError(UiError.ImportFailed(reason))
+
+    private fun uniqueName(base: String, taken: Set<String>): String {
+        if (base.lowercase() !in taken) return base
+        var n = 2
+        while ("$base ($n)".lowercase() in taken) n++
+        return "$base ($n)"
     }
 
     fun renamePreset(id: String, name: String) {

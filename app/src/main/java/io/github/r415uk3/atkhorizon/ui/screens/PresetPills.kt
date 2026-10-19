@@ -70,6 +70,7 @@ fun PresetPills(
     enabled: Boolean,
     onSelect: (String) -> Unit,
     onSave: (String) -> Unit,
+    onImport: () -> Unit,
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -112,10 +113,23 @@ fun PresetPills(
             }
         }
         val saveLabel = stringResource(R.string.preset_save_as)
-        Pill(
-            "+", on = false, enabled = enabled, onClick = { saving = true },
-            modifier = Modifier.semantics { contentDescription = saveLabel },
-        )
+        var addMenu by remember { mutableStateOf(false) }
+        Box {
+            Pill(
+                "+", on = false, enabled = enabled, onClick = { addMenu = true },
+                modifier = Modifier.semantics { contentDescription = saveLabel },
+            )
+            DropdownMenu(expanded = addMenu && enabled, onDismissRequest = { addMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.preset_save_as)) },
+                    onClick = { addMenu = false; saving = true },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.preset_import)) },
+                    onClick = { addMenu = false; onImport() },
+                )
+            }
+        }
     }
 
     if (saving && enabled) {

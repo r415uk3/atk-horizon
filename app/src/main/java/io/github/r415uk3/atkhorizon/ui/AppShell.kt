@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.r415uk3.atkhorizon.R
+import io.github.r415uk3.atkhorizon.data.ImportError
 import io.github.r415uk3.atkhorizon.ui.glass.BlobBackground
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
 import io.github.r415uk3.atkhorizon.ui.glass.LocalHazeState
@@ -75,8 +76,23 @@ internal fun errorMessage(e: UiError): Pair<Int, Int?> = when (e) {
     // Bands are 0-based internally, 1-based for people.
     is UiError.UnstableFilter -> R.string.error_unstable_filter to e.band + 1
     UiError.PresetStorage -> R.string.error_preset_storage to null
+    is UiError.ImportFailed -> importErrorMessage(e.reason)
     is UiError.SuspiciousOffset ->
         (if (e.changeBlocked) R.string.error_suspicious_offset_blocked else R.string.error_suspicious_offset) to null
+}
+
+/** Band numbers are 0-based internally, 1-based for people. */
+internal fun importErrorMessage(r: ImportError): Pair<Int, Int?> = when (r) {
+    ImportError.NotJson -> R.string.import_error_not_json to null
+    ImportError.TooLarge -> R.string.import_error_too_large to null
+    ImportError.Unreadable -> R.string.import_error_unreadable to null
+    ImportError.WrongShape -> R.string.import_error_wrong_shape to null
+    ImportError.WrongType -> R.string.import_error_wrong_type to null
+    is ImportError.WrongFilterCount -> R.string.import_error_filter_count to r.count
+    ImportError.BadFilterIndex -> R.string.import_error_filter_index to null
+    is ImportError.UnknownFilterType -> R.string.import_error_filter_type to r.band + 1
+    is ImportError.BandOutOfRange -> R.string.import_error_band_range to r.band + 1
+    is ImportError.BandUnstable -> R.string.import_error_band_unstable to r.band + 1
 }
 
 private val TabBarHeight = 54.dp

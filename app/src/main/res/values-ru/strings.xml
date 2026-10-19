@@ -50,6 +50,17 @@
     <string name="preset_custom_curve">Свой</string>
     <string name="preset_label">Пресет</string>
     <string name="preset_save_as">Сохранить как пресет…</string>
+    <string name="preset_import">Импорт файла .eq…</string>
+    <string name="import_error_not_json">Это не пресет: файл не является корректным JSON.</string>
+    <string name="import_error_too_large">Файл слишком велик для пресета.</string>
+    <string name="import_error_unreadable">Не удалось прочитать файл.</string>
+    <string name="import_error_wrong_shape">Это не пресет ATK Hub: не хватает обязательных полей.</string>
+    <string name="import_error_wrong_type">Это не пресет эквалайзера.</string>
+    <string name="import_error_filter_count">В пресете %1$d полос, а нужно ровно 8.</string>
+    <string name="import_error_filter_index">Номера полос в пресете не от 0 до 7 по одному разу.</string>
+    <string name="import_error_filter_type">У полосы %1$d неизвестный тип фильтра.</string>
+    <string name="import_error_band_range">У полосы %1$d значения вне допустимого диапазона.</string>
+    <string name="import_error_band_unstable">Полоса %1$d даёт неустойчивый фильтр, пресет не импортирован.</string>
     <string name="preset_name">Название пресета</string>
     <string name="preset_rename">Переименовать</string>
     <string name="preset_delete">Удалить</string>

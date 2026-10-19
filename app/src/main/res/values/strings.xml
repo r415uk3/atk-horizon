@@ -51,6 +51,17 @@
     <string name="preset_custom_curve">Custom</string>
     <string name="preset_label">Preset</string>
     <string name="preset_save_as">Save as preset…</string>
+    <string name="preset_import">Import .eq file…</string>
+    <string name="import_error_not_json">This file is not a preset: it is not valid JSON.</string>
+    <string name="import_error_too_large">This file is too large to be a preset.</string>
+    <string name="import_error_unreadable">The file could not be read.</string>
+    <string name="import_error_wrong_shape">This file is not an ATK Hub preset: required fields are missing.</string>
+    <string name="import_error_wrong_type">This file is not an equalizer preset.</string>
+    <string name="import_error_filter_count">The preset has %1$d bands; exactly 8 are required.</string>
+    <string name="import_error_filter_index">The preset\'s band numbers are not 0 to 7, each once.</string>
+    <string name="import_error_filter_type">Band %1$d has an unknown filter type.</string>
+    <string name="import_error_band_range">Band %1$d has values outside the supported range.</string>
+    <string name="import_error_band_unstable">Band %1$d gives an unstable filter, so the preset was not imported.</string>
     <string name="preset_name">Preset name</string>
     <string name="preset_rename">Rename</string>
     <string name="preset_delete">Delete</string>

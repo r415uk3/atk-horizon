@@ -293,6 +293,72 @@ class HorizonViewModelTest {
         assertNull(r.state.activePresetId)
     }
 
+    private fun importBands() = listOf(60, 125, 250, 500, 1000, 2500, 5000, 16000)
+        .mapIndexed { i, fc -> EqBand(FilterType.Peak, fc, 0.75, (i % 5).toDouble()) }
+
+    @Test
+    fun importPresetCreatesAndAppliesIt() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        val bands = importBands()
+        r.vm.importPreset("Music", bands)
+        advanceUntilIdle()
+        val p = r.state.presets.single { it.name == "Music" }
+        assertEquals(bands, p.bands)
+        assertEquals(p.id, r.state.activePresetId)
+        assertEquals(encoded(bands), r.fake.bands)
+        assertEquals(encoded(bands), r.fake.flashBands)
+        assertEquals(bands, r.state.bands)
+        assertNull(r.state.error)
+    }
+
+    @Test
+    fun importPresetSuffixesTakenNames() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.vm.importPreset("Music", importBands())
+        advanceUntilIdle()
+        r.vm.importPreset("music", importBands().reversed())
+        advanceUntilIdle()
+        r.vm.importPreset("Music", importBands())
+        advanceUntilIdle()
+        assertEquals(listOf("Music", "music (2)", "Music (3)"), r.state.presets.filter { !it.builtIn }.map { it.name })
+        assertEquals(r.state.presets.last().id, r.state.activePresetId)
+    }
+
+    @Test
+    fun importPresetStorageFailureAppliesNothing() = runTest {
+        val r = Rig(this)
+        val failing = object : io.github.r415uk3.atkhorizon.data.PresetStore by r.presets {
+            override suspend fun create(name: String, bands: List<EqBand>): Preset = throw java.io.IOException("disk full")
+        }
+        val vm = HorizonViewModel(r.usb, failing, r.settings, {}, r.vmScope)
+        runCurrent()
+        r.fake.log.clear()
+        vm.importPreset("Music", importBands())
+        advanceUntilIdle()
+        assertEquals(UiError.PresetStorage, vm.state.value.error)
+        assertEquals(encoded(EqBand.DEFAULTS), r.fake.bands)
+        assertTrue(r.fake.log.none { it.dir == 0x01 && it.cmd == 0x01 })
+        assertEquals("default", vm.state.value.activePresetId)
+    }
+
+    @Test
+    fun importPresetRejectsWrongBandCountAndDoesNothingWhenNotReady() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.vm.importPreset("Short", importBands().take(7))
+        advanceUntilIdle()
+        assertEquals(UiError.ImportFailed(io.github.r415uk3.atkhorizon.data.ImportError.WrongFilterCount(7)), r.state.error)
+        assertTrue(r.state.presets.none { it.name == "Short" })
+
+        val idle = Rig(this, UsbState.NoDevice)
+        runCurrent()
+        idle.vm.importPreset("Music", importBands())
+        advanceUntilIdle()
+        assertTrue(idle.state.presets.none { it.name == "Music" })
+    }
+
     @Test
     fun savedPresetMatchingBuiltInStaysActive() = runTest {
         val r = Rig(this)

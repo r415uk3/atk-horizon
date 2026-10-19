@@ -1,5 +1,6 @@
 package io.github.r415uk3.atkhorizon.ui
 
+import io.github.r415uk3.atkhorizon.data.ImportError
 import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.data.ThemeMode
 import io.github.r415uk3.atkhorizon.protocol.EqBand
@@ -26,6 +27,8 @@ sealed interface UiError {
     data class UnstableFilter(val band: Int) : UiError
     /** Custom presets on disk are unreadable; the store refuses to overwrite them. */
     data object PresetStorage : UiError
+    /** A preset file could not be imported; nothing was saved or sent. */
+    data class ImportFailed(val reason: ImportError) : UiError
     /**
      * The device reports a gain offset outside ±10 dB (implausible; not shown). [changeBlocked]: an
      * EQ change was refused before anything was written, so the wild DAC value is not written back.

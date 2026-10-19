@@ -1,5 +1,7 @@
 package io.github.r415uk3.atkhorizon.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +12,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import io.github.r415uk3.atkhorizon.data.ImportResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -33,6 +41,18 @@ import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalHorizonColors.current
     val ready = state.conn == ConnState.Ready
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val read = withContext(Dispatchers.IO) { readImportFile(context.contentResolver, uri) }
+            when (read) {
+                is ImportResult.Failed -> vm.importFailed(read.error)
+                is ImportResult.Ok -> vm.importPreset(read.preset.name, read.preset.bands)
+            }
+        }
+    }
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PresetPills(
             presets = state.presets,
@@ -40,6 +60,7 @@ fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit,
             enabled = ready,
             onSelect = vm::selectPreset,
             onSave = vm::saveAsPreset,
+            onImport = { picker.launch(IMPORT_MIME_TYPES) },
             onRename = vm::renamePreset,
             onDelete = vm::deletePreset,
         )
