@@ -51,7 +51,7 @@ private data class HubPreset(
     val type: String? = null,
 )
 
-private val hubJson = Json { ignoreUnknownKeys = true }
+private val hubJson = Json { ignoreUnknownKeys = true; allowSpecialFloatingPointValues = true }
 
 private const val MAX_NAME = 40
 private const val BANDS = 8
@@ -60,12 +60,13 @@ private const val BANDS = 8
  * Parses an ATK Hub `.eq` export. Values are clamped to the UI limits first ([EqBand.clamped]), then
  * validated: so fc 0 or Q 0 import as 20 Hz / Q 0.1, while a band that is still out of range or
  * gives an unstable filter rejects the file. [fallbackName] (the file name without extension) is
- * used when the file has no usable name.
+ * used when the file has no usable name; if that is blank too the returned name is blank and the caller
+ * substitutes a localized default.
  */
 fun parseHubEq(json: String, fallbackName: String = ""): ImportResult {
     fun fail(e: ImportError) = ImportResult.Failed(e)
     val root = try {
-        hubJson.parseToJsonElement(json)
+        hubJson.parseToJsonElement(json.removePrefix("\uFEFF"))
     } catch (_: SerializationException) {
         return fail(ImportError.NotJson)
     } catch (_: IllegalArgumentException) {
@@ -86,7 +87,8 @@ fun parseHubEq(json: String, fallbackName: String = ""): ImportResult {
     val bands = file.filters.sortedBy { it.filterIndex }.map { f ->
         val type = FilterType.entries.firstOrNull { it.code == f.filterType }
             ?: return fail(ImportError.UnknownFilterType(f.filterIndex))
-        if (!f.filterFc.isFinite() || !f.filterQ.isFinite() || !f.filterGain.isFinite()) return fail(ImportError.WrongShape)
+        // NaN Q/gain survive clamping and are caught by inUiRange (BandOutOfRange); fc must be finite to round.
+        if (!f.filterFc.isFinite()) return fail(ImportError.WrongShape)
         EqBand(type, f.filterFc.roundToLong().coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt(), f.filterQ, f.filterGain)
             .clamped()
             .also { b ->
@@ -95,5 +97,5 @@ fun parseHubEq(json: String, fallbackName: String = ""): ImportResult {
             }
     }
     val name = file.name?.trim().orEmpty().ifEmpty { fallbackName.trim() }.take(MAX_NAME).trim()
-    return ImportResult.Ok(ImportedPreset(name.ifEmpty { "Imported" }, bands))
+    return ImportResult.Ok(ImportedPreset(name, bands))
 }

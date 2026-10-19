@@ -114,6 +114,31 @@ class EqFileImportTest {
         assertEquals("Mine", ok(file(), "Music").name)
     }
 
+    @Test
+    fun blankNamesEverywhereGiveABlankName() {
+        assertEquals("", ok(file(name = null), "").name)
+    }
+
+    @Test
+    fun leadingBomIsStripped() {
+        assertEquals("Mine", ok("\uFEFF" + file()).name)
+    }
+
+    @Test
+    fun unstableBandAfterClampingIsRejected() {
+        // HighShelf at 20 Hz, Q 5, +12 dB: gain clamps to 10 dB and the filter is still unstable.
+        val f = (0..7).map { if (it == 2) filter(2, type = 3, fc = "20", q = "5", gain = "12") else filter(it) }
+        assertEquals(ImportError.BandUnstable(2), err(file(f)))
+    }
+
+    @Test
+    fun nanValuesAreOutOfRange() {
+        val f = (0..7).map { if (it == 5) filter(5, q = "NaN") else filter(it) }
+        assertEquals(ImportError.BandOutOfRange(5), err(file(f)))
+        val g = (0..7).map { if (it == 1) filter(1, gain = "NaN") else filter(it) }
+        assertEquals(ImportError.BandOutOfRange(1), err(file(g)))
+    }
+
     private val realFileBands = listOf(
         Triple(60, 5.0, intArrayOf(10, 252, 24, 64, 234, 116, 64, 128, 154, 207, 166, 63, 22, 139, 191, 127, 92, 52, 64, 192)),
         Triple(125, 4.0, intArrayOf(86, 86, 41, 64, 15, 113, 142, 128, 33, 80, 73, 63, 241, 142, 113, 127, 137, 89, 141, 192)),

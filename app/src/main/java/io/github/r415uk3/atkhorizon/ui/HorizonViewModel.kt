@@ -480,7 +480,8 @@ class HorizonViewModel(
      * fails nothing is applied.
      */
     fun importPreset(name: String, bands: List<EqBand>) {
-        val s0 = readySession() ?: return
+        val s0 = readySession() ?: return setError(UiError.Disconnected)
+        if (name.isBlank()) return setError(UiError.ImportFailed(ImportError.WrongShape))
         if (bands.size != s0.deviceBands.size) return setError(UiError.ImportFailed(ImportError.WrongFilterCount(bands.size)))
         val (valid, bad) = validPresetBands(bands)
         if (bad != null) return setError(UiError.UnstableFilter(bad))

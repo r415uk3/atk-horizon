@@ -43,13 +43,15 @@ fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit,
     val ready = state.conn == ConnState.Ready
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val defaultName = stringResource(R.string.import_default_name)
+    val addLabel = stringResource(R.string.preset_add)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val read = withContext(Dispatchers.IO) { readImportFile(context.contentResolver, uri) }
             when (read) {
                 is ImportResult.Failed -> vm.importFailed(read.error)
-                is ImportResult.Ok -> vm.importPreset(read.preset.name, read.preset.bands)
+                is ImportResult.Ok -> vm.importPreset(read.preset.name.ifBlank { defaultName }, read.preset.bands)
             }
         }
     }
@@ -60,6 +62,7 @@ fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit,
             enabled = ready,
             onSelect = vm::selectPreset,
             onSave = vm::saveAsPreset,
+            addLabel = addLabel,
             onImport = { picker.launch(IMPORT_MIME_TYPES) },
             onRename = vm::renamePreset,
             onDelete = vm::deletePreset,
