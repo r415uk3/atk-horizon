@@ -116,3 +116,13 @@ cancelling). Finish phase A, including the coefficient cross-check, before anyth
 26. **Gesture feel.** Dragging points (frequency on X, gain on Y), tapping, scrolling the screens:
     note anything that feels off.
     Result:
+27. **Import .eq.** Sound → "+" → "Import .eq file…", pick a Hub export (e.g. Music.eq): a new
+    custom preset appears with the file's name, is applied, verifies, and the sound changes.
+    Result:
+28. **Glass and wallpaper on the device screens.** Set a busy wallpaper; check the Sound curve
+    refracts under the tab bar and band card, preset pills/toggles/sliders behave, text is
+    legible in light and dark.
+    Result:
+29. **Glass dialogs.** Open the reset and delete-preset confirmations: Back and tapping outside
+    close them without acting; with TalkBack on, nothing behind the dialog is reachable.
+    Result:
