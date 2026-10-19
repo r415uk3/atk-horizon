@@ -826,4 +826,52 @@ class HorizonViewModelTest {
         assertEquals(io.github.r415uk3.atkhorizon.data.ThemeMode.Auto, vm.state.value.themeMode)
         assertTrue(r.vmScope.coroutineContext.job.isActive)
     }
+
+    @Test
+    fun wallpaperSaveRemoveAndFailures() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        assertNull(r.state.wallpaperVersion)
+        val decoded = kotlinx.coroutines.CompletableDeferred<io.github.r415uk3.atkhorizon.data.WallpaperResult>()
+        r.vm.setWallpaper { decoded.await() }
+        runCurrent()
+        assertTrue(r.state.wallpaperSaving)
+        decoded.complete(io.github.r415uk3.atkhorizon.data.WallpaperResult.Saved(7L))
+        runCurrent()
+        assertFalse(r.state.wallpaperSaving)
+        assertEquals(7L, r.state.wallpaperVersion)
+        assertNull(r.state.error)
+
+        r.vm.setWallpaper { io.github.r415uk3.atkhorizon.data.WallpaperResult.Failed(io.github.r415uk3.atkhorizon.data.WallpaperError.TooLarge) }
+        runCurrent()
+        // A failed pick keeps the previous wallpaper.
+        assertEquals(7L, r.state.wallpaperVersion)
+        assertEquals(UiError.WallpaperFailed(io.github.r415uk3.atkhorizon.data.WallpaperError.TooLarge), r.state.error)
+
+        var deleted = 0
+        r.vm.removeWallpaper { deleted++ }
+        runCurrent()
+        assertNull(r.state.wallpaperVersion)
+        assertEquals(1, deleted)
+    }
+
+    @Test
+    fun wallpaperSettingWriteFailureIsAnError() = runTest {
+        val r = Rig(this)
+        val failing = object : io.github.r415uk3.atkhorizon.data.SettingsStore by r.settings {
+            override suspend fun setWallpaperVersion(v: Long?) = throw java.io.IOException("disk full")
+        }
+        val vm = HorizonViewModel(r.usb, r.presets, failing, {}, r.vmScope)
+        runCurrent()
+        vm.setWallpaper { io.github.r415uk3.atkhorizon.data.WallpaperResult.Saved(1L) }
+        runCurrent()
+        assertEquals(UiError.WallpaperFailed(io.github.r415uk3.atkhorizon.data.WallpaperError.Storage), vm.state.value.error)
+        assertNull(vm.state.value.wallpaperVersion)
+        // A crashing decoder is reported, never thrown.
+        vm.dismissError()
+        vm.setWallpaper { throw IllegalStateException("boom") }
+        runCurrent()
+        assertEquals(UiError.WallpaperFailed(io.github.r415uk3.atkhorizon.data.WallpaperError.Unreadable), vm.state.value.error)
+        assertTrue(r.vmScope.coroutineContext.job.isActive)
+    }
 }

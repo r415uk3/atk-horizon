@@ -33,6 +33,14 @@ class ShellMappingTest {
     }
 
     @Test
+    fun everyWallpaperErrorHasItsOwnMessage() {
+        val all = io.github.r415uk3.atkhorizon.data.WallpaperError.entries
+        val ids = all.map { errorMessage(UiError.WallpaperFailed(it)).first }
+        assertEquals(all.size, ids.toSet().size)
+        assertEquals(R.string.wallpaper_error_too_large to null, errorMessage(UiError.WallpaperFailed(io.github.r415uk3.atkhorizon.data.WallpaperError.TooLarge)))
+    }
+
+    @Test
     fun statusScreensForEveryNonReadyState() {
         assertNull(statusContent(ConnState.Ready))
         assertNull(statusContent(ConnState.Loading))

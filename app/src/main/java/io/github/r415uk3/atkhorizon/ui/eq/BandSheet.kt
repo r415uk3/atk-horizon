@@ -6,13 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,7 +26,9 @@ import androidx.compose.ui.unit.sp
 import io.github.r415uk3.atkhorizon.R
 import io.github.r415uk3.atkhorizon.protocol.EqBand
 import io.github.r415uk3.atkhorizon.protocol.FilterType
+import io.github.r415uk3.atkhorizon.ui.glass.GlassButton
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
+import io.github.r415uk3.atkhorizon.ui.glass.LiquidSlider
 import io.github.r415uk3.atkhorizon.ui.glass.PillShape
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import java.util.Locale
@@ -71,22 +71,22 @@ fun BandSheet(
 ) {
     val c = LocalHorizonColors.current
     val locale = Locale.getDefault()
-    GlassSurface(modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
+    GlassSurface(
+        modifier.fillMaxWidth(),
+        surface = c.glassSurfaceFloating,
+        blurRadius = 12.dp,
+        refractionHeight = 22.dp,
+        refractionAmount = 44.dp,
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.band_title, index + 1),
                     color = c.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
                 )
-                Text(
-                    stringResource(R.string.action_done),
-                    color = c.onAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(PillShape)
-                        .background(c.accent)
-                        .clickable(role = Role.Button, onClick = onDismiss)
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                )
+                GlassButton(onClick = onDismiss, filled = true, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                    Text(stringResource(R.string.action_done), color = c.onAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             Text(stringResource(R.string.band_type), color = c.muted, fontSize = 12.sp)
@@ -164,19 +164,7 @@ private fun Param(
             )
             Stepper("+", enabled, onPlus)
         }
-        Slider(
-            value = slider,
-            onValueChange = onSlider,
-            enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = c.ink,
-                activeTrackColor = c.ink,
-                inactiveTrackColor = c.ink.copy(alpha = 0.15f),
-                disabledThumbColor = c.ink,
-                disabledActiveTrackColor = c.ink,
-                disabledInactiveTrackColor = c.ink.copy(alpha = 0.15f),
-            ),
-        )
+        LiquidSlider(value = slider, onValueChange = onSlider, enabled = enabled)
     }
 }
 

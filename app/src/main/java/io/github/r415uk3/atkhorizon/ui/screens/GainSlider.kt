@@ -3,8 +3,6 @@ package io.github.r415uk3.atkhorizon.ui.screens
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.r415uk3.atkhorizon.R
+import io.github.r415uk3.atkhorizon.ui.glass.LiquidSlider
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import java.util.Locale
 import kotlin.math.floor
@@ -59,7 +58,7 @@ internal fun GainSlider(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        Slider(
+        LiquidSlider(
             value = (shown ?: 0.0).toFloat().coerceIn(OFFSET_MIN_DB.toFloat(), OFFSET_MAX_DB.toFloat()),
             onValueChange = { drag = snapOffset(it.toDouble()) },
             onValueChangeFinished = {
@@ -69,14 +68,6 @@ internal fun GainSlider(
             valueRange = OFFSET_MIN_DB.toFloat()..OFFSET_MAX_DB.toFloat(),
             steps = ((OFFSET_MAX_DB - OFFSET_MIN_DB) / OFFSET_STEP_DB).toInt() - 1,
             enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = c.ink,
-                activeTrackColor = c.ink,
-                inactiveTrackColor = c.ink.copy(alpha = 0.15f),
-                disabledThumbColor = c.ink,
-                disabledActiveTrackColor = c.ink,
-                disabledInactiveTrackColor = c.ink.copy(alpha = 0.15f),
-            ),
         )
     }
 }

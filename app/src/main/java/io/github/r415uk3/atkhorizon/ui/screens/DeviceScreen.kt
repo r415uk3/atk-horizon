@@ -1,9 +1,8 @@
 package io.github.r415uk3.atkhorizon.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,10 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,10 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,7 +28,9 @@ import io.github.r415uk3.atkhorizon.ui.ConnState
 import io.github.r415uk3.atkhorizon.ui.HorizonViewModel
 import io.github.r415uk3.atkhorizon.ui.UiState
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
-import io.github.r415uk3.atkhorizon.ui.glass.PillShape
+import io.github.r415uk3.atkhorizon.ui.glass.GlassAlertDialog
+import io.github.r415uk3.atkhorizon.ui.glass.GlassButton
+import io.github.r415uk3.atkhorizon.ui.glass.GlassDialogButton
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import io.github.r415uk3.atkhorizon.usb.UsbIds
 
@@ -47,7 +43,7 @@ fun DeviceScreen(state: UiState, vm: HorizonViewModel, modifier: Modifier = Modi
     val c = LocalHorizonColors.current
     val ready = state.conn == ConnState.Ready
     var confirming by rememberSaveable { mutableStateOf(false) }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GlassSurface(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 InfoRow(stringResource(R.string.device_model), stringResource(R.string.device_model_value))
@@ -64,16 +60,14 @@ fun DeviceScreen(state: UiState, vm: HorizonViewModel, modifier: Modifier = Modi
                     onCommit = vm::setDacOffset,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.device_reset),
-                        color = c.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .alpha(if (ready && !state.busy) 1f else 0.45f)
-                            .clip(PillShape)
-                            .background(c.accent)
-                            .clickable(enabled = ready && !state.busy, role = Role.Button) { confirming = true }
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                    )
+                    GlassButton(
+                        onClick = { confirming = true },
+                        enabled = ready && !state.busy,
+                        filled = true,
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                    ) {
+                        Text(stringResource(R.string.device_reset), color = c.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                     if (state.busy) {
                         CircularProgressIndicator(
                             Modifier.padding(start = 12.dp).size(16.dp), color = c.muted, strokeWidth = 2.dp,
@@ -84,17 +78,15 @@ fun DeviceScreen(state: UiState, vm: HorizonViewModel, modifier: Modifier = Modi
         }
     }
     if (confirming) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text(stringResource(R.string.reset_confirm_title)) },
-            text = { Text(stringResource(R.string.reset_confirm_message)) },
+            title = stringResource(R.string.reset_confirm_title),
+            text = { Text(stringResource(R.string.reset_confirm_message), color = c.muted, fontSize = 15.sp) },
             confirmButton = {
-                TextButton(onClick = { confirming = false; vm.softReset() }) {
-                    Text(stringResource(R.string.reset_confirm_action))
-                }
+                GlassDialogButton(stringResource(R.string.reset_confirm_action), onClick = { confirming = false; vm.softReset() }, primary = true)
             },
             dismissButton = {
-                TextButton(onClick = { confirming = false }) { Text(stringResource(R.string.action_cancel)) }
+                GlassDialogButton(stringResource(R.string.action_cancel), onClick = { confirming = false })
             },
         )
     }

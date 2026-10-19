@@ -1,10 +1,10 @@
 package io.github.r415uk3.atkhorizon.ui.screens
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,18 +13,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.background
 import io.github.r415uk3.atkhorizon.R
 import io.github.r415uk3.atkhorizon.ui.ConnState
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
-import io.github.r415uk3.atkhorizon.ui.glass.PillShape
+import io.github.r415uk3.atkhorizon.ui.glass.GlassButton
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 
 /** What a non-ready connection state shows: title (with optional format arg), body, action. */
@@ -73,16 +70,14 @@ fun StatusScreen(conn: ConnState, onAction: () -> Unit, modifier: Modifier = Mod
                 )
                 Text(stringResource(content.body), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center)
                 content.action?.let { action ->
-                    Text(
-                        stringResource(action),
-                        color = c.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                            .clip(PillShape)
-                            .background(c.accent)
-                            .clickable(role = Role.Button, onClick = onAction)
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                    )
+                    GlassButton(
+                        onClick = onAction,
+                        modifier = Modifier.padding(top = 6.dp),
+                        filled = true,
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                    ) {
+                        Text(stringResource(action), color = c.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

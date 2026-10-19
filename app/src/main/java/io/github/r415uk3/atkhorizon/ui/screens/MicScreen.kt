@@ -10,12 +10,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -25,6 +24,7 @@ import io.github.r415uk3.atkhorizon.ui.ConnState
 import io.github.r415uk3.atkhorizon.ui.HorizonViewModel
 import io.github.r415uk3.atkhorizon.ui.UiState
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
+import io.github.r415uk3.atkhorizon.ui.glass.LiquidToggle
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 
 /** AI noise-cancelling switch and the mic gain offset. Editable only when the device is Ready. */
@@ -32,7 +32,7 @@ import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 fun MicScreen(state: UiState, vm: HorizonViewModel, modifier: Modifier = Modifier) {
     val c = LocalHorizonColors.current
     val ready = state.conn == ConnState.Ready
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GlassSurface(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -41,16 +41,11 @@ fun MicScreen(state: UiState, vm: HorizonViewModel, modifier: Modifier = Modifie
                         color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
                     )
                     if (state.busy) CircularProgressIndicator(Modifier.size(14.dp), color = c.muted, strokeWidth = 2.dp)
-                    Switch(
+                    LiquidToggle(
                         checked = state.noiseCancelling,
                         onCheckedChange = vm::setNoiseCancelling,
                         enabled = ready,
-                        modifier = Modifier.padding(start = 10.dp),
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = c.accent, checkedThumbColor = c.onAccent,
-                            uncheckedTrackColor = c.ink.copy(alpha = 0.15f), uncheckedThumbColor = c.ink,
-                            uncheckedBorderColor = c.ink.copy(alpha = 0.3f),
-                        ),
+                        modifier = Modifier.padding(start = 10.dp).alpha(if (ready) 1f else 0.45f),
                     )
                 }
                 GainSlider(

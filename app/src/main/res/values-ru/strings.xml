@@ -109,6 +109,14 @@
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_auto_hint">«Авто» следует системной теме Android</string>
+    <string name="wallpaper_title">Обои</string>
+    <string name="wallpaper_hint">Фото за стеклом. Без него фон — сплошной цвет.</string>
+    <string name="wallpaper_choose">Выбрать фото</string>
+    <string name="wallpaper_remove">Убрать</string>
+    <string name="wallpaper_saving">Сохранение…</string>
+    <string name="wallpaper_error_too_large">Изображение слишком большое (больше 50 МБ). Выберите поменьше.</string>
+    <string name="wallpaper_error_unreadable">Не удалось открыть изображение. Выберите другое фото.</string>
+    <string name="wallpaper_error_storage">Не удалось сохранить обои. Проверьте свободное место и попробуйте ещё раз.</string>
     <string name="settings_source_code">Исходный код</string>
     <string name="settings_github">GitHub</string>
     <string name="settings_version">Версия</string>

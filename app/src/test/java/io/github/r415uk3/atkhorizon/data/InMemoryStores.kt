@@ -25,10 +25,15 @@ class InMemoryPresetStore(initialCustom: List<Preset> = emptyList()) : PresetSto
     override suspend fun delete(id: String) = custom.update { list -> list.filterNot { it.id == id } }
 }
 
-class InMemorySettingsStore(initial: ThemeMode = ThemeMode.Auto) : SettingsStore {
+class InMemorySettingsStore(initial: ThemeMode = ThemeMode.Auto, initialWallpaper: Long? = null) : SettingsStore {
     private val mode = MutableStateFlow(initial)
+    private val wallpaper = MutableStateFlow(initialWallpaper)
     override val themeMode: Flow<ThemeMode> = mode
     override suspend fun setThemeMode(m: ThemeMode) {
         mode.value = m
+    }
+    override val wallpaperVersion: Flow<Long?> = wallpaper
+    override suspend fun setWallpaperVersion(v: Long?) {
+        wallpaper.value = v
     }
 }

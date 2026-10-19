@@ -110,6 +110,14 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_auto_hint">Auto follows the Android system theme</string>
+    <string name="wallpaper_title">Wallpaper</string>
+    <string name="wallpaper_hint">A photo behind the glass. Without one, the background is a solid colour.</string>
+    <string name="wallpaper_choose">Choose photo</string>
+    <string name="wallpaper_remove">Remove</string>
+    <string name="wallpaper_saving">Saving…</string>
+    <string name="wallpaper_error_too_large">This image is too large (over 50 MB). Choose a smaller one.</string>
+    <string name="wallpaper_error_unreadable">This image can\'t be opened. Choose another photo.</string>
+    <string name="wallpaper_error_storage">The wallpaper couldn\'t be saved. Check the free space and try again.</string>
     <string name="settings_source_code">Source code</string>
     <string name="settings_github">GitHub</string>
     <string name="settings_version">Version</string>

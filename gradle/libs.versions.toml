@@ -1,13 +1,14 @@
 [versions]
 agp = "9.4.1"
 kotlin = "2.4.21"
-composeBom = "2026.06.01"
+composeBom = "2026.09.00"
 activityCompose = "1.13.0"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 datastore = "1.2.1"
 lifecycle = "2.10.0"
-haze = "1.7.2"
+backdrop = "2.0.1"
+kyantShapes = "1.2.1"
 junit = "4.13.2"
 
 [libraries]
@@ -23,7 +24,8 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
-haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
+kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

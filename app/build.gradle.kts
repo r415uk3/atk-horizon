@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "io.github.r415uk3.atkhorizon"
-    compileSdk = 36
+    compileSdk {
+        version = release(37)
+    }
 
     defaultConfig {
         applicationId = "io.github.r415uk3.atkhorizon"
@@ -42,7 +44,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.haze)
+    implementation(libs.kyant.backdrop)
+    implementation(libs.kyant.shapes)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.kotlinx.serialization.json)

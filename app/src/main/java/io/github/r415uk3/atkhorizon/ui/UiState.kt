@@ -3,6 +3,7 @@ package io.github.r415uk3.atkhorizon.ui
 import io.github.r415uk3.atkhorizon.data.ImportError
 import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.data.ThemeMode
+import io.github.r415uk3.atkhorizon.data.WallpaperError
 import io.github.r415uk3.atkhorizon.protocol.EqBand
 
 sealed interface ConnState {
@@ -34,6 +35,8 @@ sealed interface UiError {
      * EQ change was refused before anything was written, so the wild DAC value is not written back.
      */
     data class SuspiciousOffset(val changeBlocked: Boolean) : UiError
+    /** A picked wallpaper could not be stored; the previous wallpaper (if any) stays. */
+    data class WallpaperFailed(val reason: WallpaperError) : UiError
 }
 
 data class UiState(
@@ -51,4 +54,8 @@ data class UiState(
     val busy: Boolean = false,
     val error: UiError? = null,
     val themeMode: ThemeMode = ThemeMode.Auto,
+    /** Identifies the saved wallpaper image; null shows the solid background. */
+    val wallpaperVersion: Long? = null,
+    /** A picked wallpaper is being decoded and saved. */
+    val wallpaperSaving: Boolean = false,
 )

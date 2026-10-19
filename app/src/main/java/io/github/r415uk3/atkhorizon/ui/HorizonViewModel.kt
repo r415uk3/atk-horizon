@@ -9,6 +9,8 @@ import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.data.PresetStore
 import io.github.r415uk3.atkhorizon.data.SettingsStore
 import io.github.r415uk3.atkhorizon.data.ThemeMode
+import io.github.r415uk3.atkhorizon.data.WallpaperError
+import io.github.r415uk3.atkhorizon.data.WallpaperResult
 import io.github.r415uk3.atkhorizon.data.matchPreset
 import io.github.r415uk3.atkhorizon.protocol.DeviceBand
 import io.github.r415uk3.atkhorizon.protocol.DeviceGoneException
@@ -121,6 +123,7 @@ class HorizonViewModel(
             }
         }
         this.scope.launch { settings.themeMode.collect { m -> _state.update { it.copy(themeMode = m) } } }
+        this.scope.launch { settings.wallpaperVersion.collect { v -> _state.update { it.copy(wallpaperVersion = v) } } }
         this.scope.launch { usbState.collect(::onUsb) }
     }
 
@@ -602,6 +605,56 @@ class HorizonViewModel(
                 logWarning("theme write failed", e)
             }
         }
+    }
+
+    /**
+     * Stores a picked wallpaper: [save] decodes and writes the file (it switches to an I/O
+     * dispatcher itself) and its version is then persisted, which makes the UI reload it. Runs on
+     * the ViewModel scope so leaving the settings screen does not lose the result. Never throws.
+     */
+    fun setWallpaper(save: suspend () -> WallpaperResult) {
+        scope.launch {
+            _state.update { it.copy(wallpaperSaving = true) }
+            try {
+                val result = try {
+                    save()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logWarning("wallpaper save failed", e)
+                    WallpaperResult.Failed(WallpaperError.Unreadable)
+                }
+                when (result) {
+                    is WallpaperResult.Failed -> setError(UiError.WallpaperFailed(result.error))
+                    is WallpaperResult.Saved -> writeWallpaperVersion(result.version)
+                }
+            } finally {
+                _state.update { it.copy(wallpaperSaving = false) }
+            }
+        }
+    }
+
+    /** Clears the wallpaper setting, then [delete]s the file. */
+    fun removeWallpaper(delete: suspend () -> Unit) {
+        scope.launch {
+            if (!writeWallpaperVersion(null)) return@launch
+            try {
+                delete()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logWarning("wallpaper delete failed", e)
+            }
+        }
+    }
+
+    private suspend fun writeWallpaperVersion(v: Long?): Boolean = try {
+        settings.setWallpaperVersion(v)
+        true
+    } catch (e: IOException) {
+        logWarning("wallpaper setting write failed", e)
+        setError(UiError.WallpaperFailed(WallpaperError.Storage))
+        false
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }

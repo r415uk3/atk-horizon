@@ -11,46 +11,74 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import io.github.r415uk3.atkhorizon.data.ThemeMode
 
-/** The Liquid-Glass palette (docs/design/mockup-main-screen.html, variant A). */
+/**
+ * The Liquid-Glass palette: a solid background (or the user's wallpaper under a scrim) that the
+ * glass surfaces refract, plus per-theme glass tuning so text stays legible over both.
+ */
 @Immutable
 data class HorizonColors(
     val isDark: Boolean,
+    /** Solid background when there is no wallpaper. */
     val background: Color,
-    val blob1: Color,
-    val blob2: Color,
-    val glassFill: Color,
-    val glassBorder: Color,
+    /** Drawn over the wallpaper for legibility. */
+    val wallpaperScrim: Color,
+    /** Fill drawn over the refracted backdrop of a glass surface (cards, bars, pills). */
+    val glassSurface: Color,
+    /** Fill of floating glass (tab bar, band card, snackbar), which sits over busier content. */
+    val glassSurfaceFloating: Color,
+    /** Brightness shift applied to the backdrop seen through glass (pushes it away from the ink). */
+    val glassBrightness: Float,
+    /** Rim highlight strength (0…1). */
+    val glassHighlight: Float,
+    /** Drop shadow under glass. */
+    val glassShadow: Color,
+    /** Dim behind a glass dialog. */
+    val dialogScrim: Color,
     val ink: Color,
     val muted: Color,
     /** Selected pill / segment background and its text. */
     val accent: Color,
     val onAccent: Color,
+    /** Unfilled part of slider and toggle tracks. */
+    val track: Color,
 )
+
+/** Scrim over a wallpaper: white 30 % in the light theme, black 35 % in the dark one. */
+val WallpaperScrimLight = Color.White.copy(alpha = 0.30f)
+val WallpaperScrimDark = Color.Black.copy(alpha = 0.35f)
 
 val LightHorizonColors = HorizonColors(
     isDark = false,
     background = Color(0xFFE9ECF3),
-    blob1 = Color(0xFFBF5AF2).copy(alpha = 0.35f),
-    blob2 = Color(0xFF64D2FF).copy(alpha = 0.40f),
-    glassFill = Color.White.copy(alpha = 0.42f),
-    glassBorder = Color.White.copy(alpha = 0.70f),
+    wallpaperScrim = WallpaperScrimLight,
+    glassSurface = Color.White.copy(alpha = 0.32f),
+    glassSurfaceFloating = Color(0xFFFAFAFA).copy(alpha = 0.45f),
+    glassBrightness = 0.04f,
+    glassHighlight = 1f,
+    glassShadow = Color.Black.copy(alpha = 0.10f),
+    dialogScrim = Color(0xFF29293A).copy(alpha = 0.23f),
     ink = Color(0xFF111111),
-    muted = Color.Black.copy(alpha = 0.50f),
+    muted = Color.Black.copy(alpha = 0.60f),
     accent = Color(0xFF111111),
     onAccent = Color.White,
+    track = Color(0xFF787878).copy(alpha = 0.22f),
 )
 
 val DarkHorizonColors = HorizonColors(
     isDark = true,
     background = Color(0xFF0B0D12),
-    blob1 = Color(0xFF5E5CE6).copy(alpha = 0.35f),
-    blob2 = Color(0xFF0A84FF).copy(alpha = 0.25f),
-    glassFill = Color.White.copy(alpha = 0.08f),
-    glassBorder = Color.White.copy(alpha = 0.18f),
+    wallpaperScrim = WallpaperScrimDark,
+    glassSurface = Color(0xFF16181E).copy(alpha = 0.40f),
+    glassSurfaceFloating = Color(0xFF121212).copy(alpha = 0.55f),
+    glassBrightness = -0.04f,
+    glassHighlight = 0.8f,
+    glassShadow = Color.Black.copy(alpha = 0.25f),
+    dialogScrim = Color(0xFF121212).copy(alpha = 0.56f),
     ink = Color.White,
-    muted = Color.White.copy(alpha = 0.55f),
-    accent = Color.White.copy(alpha = 0.90f),
+    muted = Color.White.copy(alpha = 0.65f),
+    accent = Color.White.copy(alpha = 0.92f),
     onAccent = Color.Black,
+    track = Color(0xFF787880).copy(alpha = 0.36f),
 )
 
 val LocalHorizonColors = staticCompositionLocalOf { LightHorizonColors }
