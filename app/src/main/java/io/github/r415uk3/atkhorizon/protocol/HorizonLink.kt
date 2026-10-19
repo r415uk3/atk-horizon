@@ -1,6 +1,7 @@
 package io.github.r415uk3.atkhorizon.protocol
 
 import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.Channel
@@ -16,19 +17,36 @@ class HorizonLink(
     private val retries: Int = 3,
 ) {
     private val mutex = Mutex()
+    @Volatile private var dead: DeviceGoneException? = null
     private val inbox = Channel<ByteArray>(Channel.UNLIMITED)
 
     init {
         // UNDISPATCHED: subscribe to incoming before any request can be sent.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            transport.incoming.collect { inbox.trySend(it) }
+            var failure: Throwable? = null
+            try {
+                transport.incoming.collect { inbox.trySend(it) }
+            } catch (e: Throwable) {
+                failure = e
+            } finally {
+                // Completion, error or cancellation all mean the link is dead.
+                val gone = DeviceGoneException()
+                failure?.let { gone.initCause(it) }
+                dead = gone
+                inbox.close(gone)
+            }
+            if (failure is CancellationException) throw failure
         }
     }
 
-    suspend fun write(p: ByteArray) = mutex.withLock { transport.send(p) }
+    suspend fun write(p: ByteArray) = mutex.withLock {
+        dead?.let { throw it }
+        transport.send(p)
+    }
 
     suspend fun request(p: ByteArray): ByteArray = mutex.withLock {
         while (inbox.tryReceive().isSuccess) { /* drop stale reports */ }
+        dead?.let { throw it }
         repeat(retries + 1) {
             transport.send(p)
             val r = withTimeoutOrNull(timeoutMs) {

@@ -85,4 +85,32 @@ class HorizonLinkTest {
         assertTrue(e is DeviceGoneException)
         assertEquals(1, t.sent.size)
     }
+
+    @Test
+    fun incomingCompletionFailsInFlightAndLaterCalls() = runTest {
+        val t = FakeTransport()
+        val link = HorizonLink(t, backgroundScope)
+        val inFlight = async { runCatching { link.request(Packets.readFirmware()) } }
+        delay(100)
+        t.completeIncoming()
+        assertTrue(inFlight.await().exceptionOrNull() is DeviceGoneException)
+        assertEquals(100, currentTime)
+        assertTrue(runCatching { link.request(Packets.readFirmware()) }.exceptionOrNull() is DeviceGoneException)
+        assertTrue(runCatching { link.write(Packets.readFirmware()) }.exceptionOrNull() is DeviceGoneException)
+        assertEquals(1, t.sent.size)
+    }
+
+    @Test
+    fun incomingErrorMapsToDeviceGoneWithoutCrashingScope() = runTest {
+        val t = FakeTransport()
+        val link = HorizonLink(t, backgroundScope)
+        val inFlight = async { runCatching { link.request(Packets.readFirmware()) } }
+        delay(100)
+        val boom = java.io.IOException("boom")
+        t.failIncoming(boom)
+        val e = inFlight.await().exceptionOrNull()
+        assertTrue(e is DeviceGoneException)
+        assertTrue(generateSequence<Throwable>(e) { it.cause }.any { it === boom })
+        assertTrue(runCatching { link.write(Packets.readFirmware()) }.exceptionOrNull() is DeviceGoneException)
+    }
 }
