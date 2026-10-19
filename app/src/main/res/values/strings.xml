@@ -52,6 +52,7 @@
     <string name="preset_label">Preset</string>
     <string name="preset_save_as">Save as preset…</string>
     <string name="import_default_name">Imported preset</string>
+    <string name="import_queued">Preset imported. It will be applied when the headset is connected.</string>
     <string name="preset_add">Add preset</string>
     <string name="preset_import">Import .eq file…</string>
     <string name="import_error_not_json">This file is not a preset: it is not valid JSON.</string>

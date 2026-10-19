@@ -1,6 +1,9 @@
 package io.github.r415uk3.atkhorizon.ui
 
 import io.github.r415uk3.atkhorizon.data.BuiltInPresets
+import io.github.r415uk3.atkhorizon.data.ImportError
+import io.github.r415uk3.atkhorizon.data.ImportResult
+import io.github.r415uk3.atkhorizon.data.ImportedPreset
 import io.github.r415uk3.atkhorizon.data.InMemoryPresetStore
 import io.github.r415uk3.atkhorizon.data.InMemorySettingsStore
 import io.github.r415uk3.atkhorizon.data.Preset
@@ -20,6 +23,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -48,7 +52,10 @@ class HorizonViewModelTest {
         val vmScope = CoroutineScope(StandardTestDispatcher(scope.testScheduler) + Job()).also { vs ->
             scope.backgroundScope.coroutineContext.job.invokeOnCompletion { vs.cancel() }
         }
-        val vm = HorizonViewModel(usb, presets, settings, { permissionRequests++ }, vmScope, { reconnects++ }, { lost += it })
+        val vm = HorizonViewModel(
+            usb, presets, settings, { permissionRequests++ }, vmScope, { reconnects++ }, { lost += it },
+            ioContext = StandardTestDispatcher(scope.testScheduler),
+        )
         val state get() = vm.state.value
 
         fun newDevice(): Pair<FakeHorizon, HorizonDevice> {
@@ -344,19 +351,158 @@ class HorizonViewModelTest {
     }
 
     @Test
-    fun importPresetRejectsWrongBandCountAndDoesNothingWhenNotReady() = runTest {
+    fun importPresetRejectsWrongBandCount() = runTest {
         val r = Rig(this)
         runCurrent()
         r.vm.importPreset("Short", importBands().take(7))
         advanceUntilIdle()
-        assertEquals(UiError.ImportFailed(io.github.r415uk3.atkhorizon.data.ImportError.WrongFilterCount(7)), r.state.error)
+        assertEquals(UiError.ImportFailed(ImportError.WrongFilterCount(7)), r.state.error)
         assertTrue(r.state.presets.none { it.name == "Short" })
+    }
 
-        val idle = Rig(this, UsbState.NoDevice)
+    private fun okFile(name: String, bands: List<EqBand> = importBands()): () -> ImportResult =
+        { ImportResult.Ok(ImportedPreset(name, bands)) }
+
+    /**
+     * The real flow: the picker stops the activity, the claim is released (Disconnected), the file
+     * arrives, then the device is reopened. The preset is saved at once and applied after Ready.
+     * (That the picker launcher itself outlives the Sound screen is in AppShell; not unit-testable.)
+     */
+    @Test
+    fun importWhileDisconnectedSavesNowAndAppliesWhenReady() = runTest {
+        val r = Rig(this)
         runCurrent()
-        idle.vm.importPreset("Music", importBands())
+        r.usb.value = UsbState.NoDevice
+        runCurrent()
+        assertEquals(ConnState.Disconnected, r.state.conn)
+
+        val bands = importBands()
+        r.vm.importFile("Imported") { ImportResult.Ok(ImportedPreset("Music", bands)) }
         advanceUntilIdle()
-        assertTrue(idle.state.presets.none { it.name == "Music" })
+        val p = r.state.presets.single { it.name == "Music" }
+        assertEquals(bands, p.bands)
+        assertTrue(r.presets.presets.first().any { it.id == p.id })
+        assertEquals(UiError.ImportQueued, r.state.error)
+        assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
+        assertTrue(r.state.activePresetId != p.id)
+
+        r.usb.value = UsbState.Connecting
+        runCurrent()
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(encoded(bands), r.fake.bands)
+        assertEquals(encoded(bands), r.fake.flashBands)
+        assertEquals(1, saves(r.fake))
+        assertEquals(p.id, r.state.activePresetId)
+        assertEquals(bands, r.state.bands)
+        assertNull(r.state.error)
+
+        // Exactly once: a later reconnect does not apply it again.
+        r.vm.selectPreset("rock")
+        advanceUntilIdle()
+        r.usb.value = UsbState.NoDevice
+        runCurrent()
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals("rock", r.state.activePresetId)
+    }
+
+    @Test
+    fun importWhileLoadingAppliesAfterSnapshot() = runTest {
+        val r = Rig(this, UsbState.Connecting)
+        runCurrent()
+        assertEquals(ConnState.Loading, r.state.conn)
+        val bands = importBands()
+        r.vm.importFile("Imported", okFile("", bands))
+        advanceUntilIdle()
+        val p = r.state.presets.single { it.name == "Imported" }
+        assertEquals(UiError.ImportQueued, r.state.error)
+
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(encoded(bands), r.fake.flashBands)
+        assertEquals(p.id, r.state.activePresetId)
+        assertNull(r.state.error)
+    }
+
+    @Test
+    fun pendingImportCancelledBySelectingAnotherPreset() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        runCurrent()
+        r.vm.importFile("Imported", okFile("Music"))
+        advanceUntilIdle()
+        assertTrue(r.state.presets.any { it.name == "Music" })
+        r.vm.selectPreset("rock")
+        assertNull(r.state.error)
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
+        assertEquals("default", r.state.activePresetId)
+    }
+
+    @Test
+    fun pendingImportReplacedByNewerImportAndCancelledByDelete() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        runCurrent()
+        val second = importBands().reversed()
+        r.vm.importFile("Imported", okFile("First"))
+        advanceUntilIdle()
+        r.vm.importFile("Imported", okFile("Second", second))
+        advanceUntilIdle()
+        val p2 = r.state.presets.single { it.name == "Second" }
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(encoded(second), r.fake.flashBands)
+        assertEquals(p2.id, r.state.activePresetId)
+        assertEquals(1, saves(r.fake))
+
+        r.usb.value = UsbState.NoDevice
+        runCurrent()
+        r.vm.importFile("Imported", okFile("Third"))
+        advanceUntilIdle()
+        val p3 = r.state.presets.single { it.name == "Third" }
+        r.vm.deletePreset(p3.id)
+        advanceUntilIdle()
+        assertNull(r.state.error)
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(encoded(second), r.fake.flashBands)
+        assertEquals(p2.id, r.state.activePresetId)
+    }
+
+    @Test
+    fun importFileWhileReadyAppliesAtOnce() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        val bands = importBands()
+        r.vm.importFile("Imported", okFile("Music", bands))
+        advanceUntilIdle()
+        val p = r.state.presets.single { it.name == "Music" }
+        assertEquals(p.id, r.state.activePresetId)
+        assertEquals(encoded(bands), r.fake.flashBands)
+        assertNull(r.state.error)
+    }
+
+    @Test
+    fun importFileReadFailureShowsErrorEvenAfterReconnect() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        runCurrent()
+        r.vm.importFile("Imported") { ImportResult.Failed(ImportError.NotJson) }
+        advanceUntilIdle()
+        assertEquals(UiError.ImportFailed(ImportError.NotJson), r.state.error)
+        // The device comes back (onStart) after the result: the error stays until dismissed.
+        r.usb.value = UsbState.Connected(r.device)
+        advanceUntilIdle()
+        assertEquals(ConnState.Ready, r.state.conn)
+        assertEquals(UiError.ImportFailed(ImportError.NotJson), r.state.error)
+        assertEquals(BuiltInPresets.all, r.state.presets)
+
+        r.vm.importFile("Imported") { throw java.io.IOException("gone") }
+        advanceUntilIdle()
+        assertEquals(UiError.ImportFailed(ImportError.Unreadable), r.state.error)
+        assertEquals(BuiltInPresets.all, r.state.presets)
     }
 
     @Test

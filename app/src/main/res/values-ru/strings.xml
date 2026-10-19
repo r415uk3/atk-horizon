@@ -51,6 +51,7 @@
     <string name="preset_label">Пресет</string>
     <string name="preset_save_as">Сохранить как пресет…</string>
     <string name="import_default_name">Импортированный пресет</string>
+    <string name="import_queued">Пресет импортирован. Он будет применён, когда гарнитура подключится.</string>
     <string name="preset_add">Добавить пресет</string>
     <string name="preset_import">Импорт файла .eq…</string>
     <string name="import_error_not_json">Это не пресет: файл не является корректным JSON.</string>

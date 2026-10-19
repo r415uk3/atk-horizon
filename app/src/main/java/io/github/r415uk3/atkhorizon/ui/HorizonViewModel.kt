@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.r415uk3.atkhorizon.data.CorruptPresetsException
 import io.github.r415uk3.atkhorizon.data.ImportError
+import io.github.r415uk3.atkhorizon.data.ImportResult
 import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.data.PresetStore
 import io.github.r415uk3.atkhorizon.data.SettingsStore
@@ -27,9 +28,11 @@ import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
 import io.github.r415uk3.atkhorizon.protocol.validPresetBands
 import io.github.r415uk3.atkhorizon.usb.UsbState
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -66,6 +69,8 @@ class HorizonViewModel(
      * it drops the session and releases the claim while the UI shows Disconnected.
      */
     private val onDeviceLost: (HorizonDevice) -> Unit = {},
+    /** Where blocking file reads run ([importFile]); the test dispatcher in tests. */
+    private val ioContext: CoroutineContext = Dispatchers.IO,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -77,6 +82,13 @@ class HorizonViewModel(
 
     /** Active preset id; kept while it still matches the displayed curve, else re-matched. */
     private var activeId: String? = null
+
+    /**
+     * An imported preset that was saved while no device was Ready; applied once, through the
+     * verified preset path, when the next session becomes Ready. Cleared by selecting a preset,
+     * another import, or deleting it.
+     */
+    private var pendingApplyId: String? = null
 
     private inner class Session(val device: HorizonDevice) {
         val job = SupervisorJob(this@HorizonViewModel.scope.coroutineContext[Job])
@@ -154,12 +166,14 @@ class HorizonViewModel(
         val s = Session(device)
         session = s
         activeId = null
-        _state.update { it.copy(conn = ConnState.Loading, error = null, busy = false) }
+        // Errors about the old connection go; import/storage/wallpaper results stay until dismissed.
+        _state.update { it.copy(conn = ConnState.Loading, error = it.error?.takeIf(::outlivesConnection), busy = false) }
         s.cs.launch {
             op(s) { d -> applySnapshot(s, d.readSnapshot()) } ?: return@launch
             if (session !== s) return@launch
             _state.update { it.copy(conn = ConnState.Ready) }
             publish(s)
+            applyPendingImport(s)
         }
     }
 
@@ -241,7 +255,7 @@ class HorizonViewModel(
         if (session === s) _state.update { it.copy(busy = s.busy > 0) }
     }
 
-    private fun setError(e: UiError) = _state.update { it.copy(error = e) }
+    private fun setError(e: UiError?) = _state.update { it.copy(error = e) }
 
     /** An implausible offset (outside ±10 dB) is shown as unknown, with an error. */
     private fun applySnapshot(s: Session, snap: DeviceSnapshot) {
@@ -426,12 +440,32 @@ class HorizonViewModel(
      * invalid or unstable is refused ([UiError.UnstableFilter]).
      */
     fun selectPreset(id: String) {
+        // The user chose something else: an import waiting for the device is no longer wanted.
+        cancelPendingImport()
         val s = readySession() ?: return
+        applyStored(s, id)
+    }
+
+    private fun applyStored(s: Session, id: String) {
         val stored = _state.value.presets.firstOrNull { it.id == id } ?: return
         if (stored.bands.size != s.deviceBands.size) return setError(UiError.PresetStorage)
         val (bands, bad) = validPresetBands(stored.bands)
         if (bad != null) return setError(UiError.UnstableFilter(bad))
         applyPreset(s, stored.copy(bands = bands))
+    }
+
+    /** Applies a preset imported while no device was Ready (once), now that [s] is Ready. */
+    private fun applyPendingImport(s: Session) {
+        val id = pendingApplyId ?: return
+        pendingApplyId = null
+        if (_state.value.error == UiError.ImportQueued) setError(null)
+        if (readySession() === s) applyStored(s, id)
+    }
+
+    private fun cancelPendingImport() {
+        if (pendingApplyId == null) return
+        pendingApplyId = null
+        if (_state.value.error == UiError.ImportQueued) setError(null)
     }
 
     /** Shows [p] (already validated, 8 bands) at once and writes it through the verified preset path. */
@@ -477,15 +511,42 @@ class HorizonViewModel(
     }
 
     /**
-     * Imports a preset file's bands as a new custom preset (a name that is taken gets " (2)", " (3)"…)
-     * and applies it through the same verified path as [selectPreset]. Bands are validated again
-     * here, so nothing invalid reaches the device whatever the caller passes. If the store write
-     * fails nothing is applied.
+     * Reads a picked preset file with [read] (blocking; run on the I/O dispatcher) and imports it
+     * via [importPreset]; [defaultName] is used when the file has no usable name. Runs on the
+     * ViewModel scope, not a composition's: opening the system picker stops the activity, which
+     * releases the USB claim and replaces the Sound screen, so the result can arrive while no
+     * device is connected. A read or parse failure is shown as [UiError.ImportFailed].
+     */
+    fun importFile(defaultName: String, read: () -> ImportResult) {
+        scope.launch {
+            val result = try {
+                withContext(ioContext) { read() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logWarning("preset file read failed", e)
+                ImportResult.Failed(ImportError.Unreadable)
+            }
+            when (result) {
+                is ImportResult.Failed -> importFailed(result.error)
+                is ImportResult.Ok -> importPreset(result.preset.name.ifBlank { defaultName }, result.preset.bands)
+            }
+        }
+    }
+
+    /**
+     * Imports a preset file's bands as a new custom preset (a name that is taken gets " (2)", " (3)"…).
+     * The preset is saved whatever the connection state. If a device is Ready it is applied at
+     * once through the same verified path as [selectPreset]; otherwise it is applied that way
+     * when the next connection becomes Ready ([UiError.ImportQueued] says so meanwhile). Bands are
+     * validated again here, so nothing invalid reaches the device whatever the caller passes. If
+     * the store write fails nothing is applied.
      */
     fun importPreset(name: String, bands: List<EqBand>) {
-        val s0 = readySession() ?: return setError(UiError.Disconnected)
+        // A newer import replaces one still waiting for the device.
+        cancelPendingImport()
         if (name.isBlank()) return setError(UiError.ImportFailed(ImportError.WrongShape))
-        if (bands.size != s0.deviceBands.size) return setError(UiError.ImportFailed(ImportError.WrongFilterCount(bands.size)))
+        if (bands.size != EqBand.DEFAULTS.size) return setError(UiError.ImportFailed(ImportError.WrongFilterCount(bands.size)))
         val (valid, bad) = validPresetBands(bands)
         if (bad != null) return setError(UiError.UnstableFilter(bad))
         scope.launch {
@@ -493,8 +554,14 @@ class HorizonViewModel(
                 val taken = presetStore.presets.first().map { it.name.trim().lowercase() }.toSet()
                 val p = presetStore.create(uniqueName(name.trim(), taken), valid)
                 _state.update { st -> if (st.presets.any { it.id == p.id }) st else st.copy(presets = st.presets + p) }
-                // The session may have changed while the store was writing; the preset stays saved.
-                readySession()?.takeIf { it === s0 }?.let { applyPreset(it, p) }
+                // The connection may have changed while the store was writing; the preset stays saved.
+                val s = readySession()
+                if (s != null) {
+                    applyPreset(s, p)
+                } else {
+                    pendingApplyId = p.id
+                    setError(UiError.ImportQueued)
+                }
             }
         }
     }
@@ -514,6 +581,7 @@ class HorizonViewModel(
     }
 
     fun deletePreset(id: String) {
+        if (id == pendingApplyId) cancelPendingImport()
         scope.launch { storage { presetStore.delete(id) } }
     }
 
@@ -661,6 +729,10 @@ class HorizonViewModel(
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
+
+    /** Not about the device connection, so a new connection does not clear it. */
+    private fun outlivesConnection(e: UiError): Boolean =
+        e is UiError.ImportFailed || e == UiError.ImportQueued || e == UiError.PresetStorage || e is UiError.WallpaperFailed
 
     fun retryPermission() = requestPermission()
 

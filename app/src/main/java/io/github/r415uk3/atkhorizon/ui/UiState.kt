@@ -31,6 +31,11 @@ sealed interface UiError {
     /** A preset file could not be imported; nothing was saved or sent. */
     data class ImportFailed(val reason: ImportError) : UiError
     /**
+     * Not a failure: an imported preset was saved while no headset was ready and will be applied
+     * (and verified) when it connects. Shown in the snackbar, which is visible on status screens too.
+     */
+    data object ImportQueued : UiError
+    /**
      * The device reports a gain offset outside ±10 dB (implausible; not shown). [changeBlocked]: an
      * EQ change was refused before anything was written, so the wild DAC value is not written back.
      */

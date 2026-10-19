@@ -1,7 +1,5 @@
 package io.github.r415uk3.atkhorizon.ui.screens
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,12 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
-import io.github.r415uk3.atkhorizon.data.ImportResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -35,26 +27,20 @@ import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 /**
  * Preset pills over the "Equalizer" card. Editing works only when the device is Ready; while
  * Loading the curve is shown read-only. Tapping a knob calls [onEditBand] (the shell shows the
- * band sheet).
+ * band sheet). [onImport] opens the file picker, which the shell owns: picking a file stops the
+ * activity and releases the headset, which disposes this screen before the result comes back.
  */
 @Composable
-fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun SoundScreen(
+    state: UiState,
+    vm: HorizonViewModel,
+    onEditBand: (Int) -> Unit,
+    onImport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = LocalHorizonColors.current
     val ready = state.conn == ConnState.Ready
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val defaultName = stringResource(R.string.import_default_name)
     val addLabel = stringResource(R.string.preset_add)
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val read = withContext(Dispatchers.IO) { readImportFile(context.contentResolver, uri) }
-            when (read) {
-                is ImportResult.Failed -> vm.importFailed(read.error)
-                is ImportResult.Ok -> vm.importPreset(read.preset.name.ifBlank { defaultName }, read.preset.bands)
-            }
-        }
-    }
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PresetPills(
             presets = state.presets,
@@ -63,7 +49,7 @@ fun SoundScreen(state: UiState, vm: HorizonViewModel, onEditBand: (Int) -> Unit,
             onSelect = vm::selectPreset,
             onSave = vm::saveAsPreset,
             addLabel = addLabel,
-            onImport = { picker.launch(IMPORT_MIME_TYPES) },
+            onImport = onImport,
             onRename = vm::renamePreset,
             onDelete = vm::deletePreset,
         )

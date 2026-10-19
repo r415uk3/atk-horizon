@@ -3,6 +3,8 @@ package io.github.r415uk3.atkhorizon.ui
 import android.content.Context
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -75,10 +77,12 @@ import io.github.r415uk3.atkhorizon.ui.glass.LiquidSegments
 import io.github.r415uk3.atkhorizon.ui.glass.LocalBackdrop
 import io.github.r415uk3.atkhorizon.ui.glass.LocalGlassDialogHost
 import io.github.r415uk3.atkhorizon.ui.screens.DeviceScreen
+import io.github.r415uk3.atkhorizon.ui.screens.IMPORT_MIME_TYPES
 import io.github.r415uk3.atkhorizon.ui.screens.MicScreen
 import io.github.r415uk3.atkhorizon.ui.screens.SettingsScreen
 import io.github.r415uk3.atkhorizon.ui.screens.SoundScreen
 import io.github.r415uk3.atkhorizon.ui.screens.StatusScreen
+import io.github.r415uk3.atkhorizon.ui.screens.readImportFile
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -95,6 +99,7 @@ internal fun errorMessage(e: UiError): Pair<Int, Int?> = when (e) {
     is UiError.UnstableFilter -> R.string.error_unstable_filter to e.band + 1
     UiError.PresetStorage -> R.string.error_preset_storage to null
     is UiError.ImportFailed -> importErrorMessage(e.reason)
+    UiError.ImportQueued -> R.string.import_queued to null
     is UiError.SuspiciousOffset ->
         (if (e.changeBlocked) R.string.error_suspicious_offset_blocked else R.string.error_suspicious_offset) to null
     is UiError.WallpaperFailed -> when (e.reason) {
@@ -145,6 +150,17 @@ fun AppShell(vm: HorizonViewModel, wallpaper: StateFlow<WallpaperImage<ImageBitm
     val appContext = context.applicationContext
     val wallpaperFiles = remember(appContext) { WallpaperFiles(appContext.filesDir) }
     val dialogs = remember { GlassDialogHost() }
+    // The .eq picker lives here, not in the Sound screen: opening it stops the activity, which
+    // releases the headset (spec 2a) and swaps the Sound screen for a status screen, disposing
+    // anything registered there before the result arrives. The shell stays composed throughout,
+    // and the read runs on the ViewModel scope.
+    val importDefaultName = stringResource(R.string.import_default_name)
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val resolver = appContext.contentResolver
+            vm.importFile(importDefaultName) { readImportFile(resolver, uri) }
+        }
+    }
     // While a dialog is open the screen behind it is inert for TalkBack, keyboard and D-pad.
     val inert = if (dialogs.isShowing) Modifier.clearAndSetSemantics {}.blockFocus() else Modifier
 
@@ -205,6 +221,7 @@ fun AppShell(vm: HorizonViewModel, wallpaper: StateFlow<WallpaperImage<ImageBitm
                             )
                             tab == Tab.Sound -> SoundScreen(
                                 state, vm, onEditBand = { editing = it },
+                                onImport = { importPicker.launch(IMPORT_MIME_TYPES) },
                                 modifier = Modifier.padding(bottom = ContentBottomInset),
                             )
                             tab == Tab.Mic -> MicScreen(state, vm, modifier = Modifier.padding(bottom = ContentBottomInset))
