@@ -47,8 +47,13 @@ class HorizonViewModel(
     private val settings: SettingsStore,
     private val requestPermission: () -> Unit,
     scope: CoroutineScope? = null,
-    /** Asks the USB layer to open the headset again (after a failed open or a lost device). */
+    /** Asks the USB layer for a fresh connection (after a failed open or a lost device). */
     private val reconnect: () -> Unit = {},
+    /**
+     * Tells the USB layer that this device stopped responding (e.g. the first read timed out), so
+     * it drops the session and releases the claim while the UI shows Disconnected.
+     */
+    private val onDeviceLost: (HorizonDevice) -> Unit = {},
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -148,8 +153,10 @@ class HorizonViewModel(
     }
 
     private fun lostDevice(error: UiError) {
+        val device = session?.device
         endSession()
         _state.update { it.copy(conn = ConnState.Disconnected, error = error) }
+        device?.let(onDeviceLost)
     }
 
     private fun readySession(): Session? = session?.takeIf { _state.value.conn == ConnState.Ready }

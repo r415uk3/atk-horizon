@@ -125,6 +125,27 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
         refresh()
     }
 
+    /**
+     * "Try again": drops the current session (if any) and opens a fresh one, so the UI gets a new
+     * [HorizonDevice] and re-reads it even when the old session was still held.
+     */
+    fun reconnect() {
+        wanted = true
+        teardown()
+        refresh()
+    }
+
+    /**
+     * The UI gave up on [device] (it stopped responding): release the claim so the inline buttons
+     * work again, and report no device until the next attach/permission/open event or [reconnect].
+     * Does not reopen by itself, so an unresponsive headset is never retried in a loop.
+     */
+    fun drop(device: HorizonDevice) {
+        if (session?.horizon !== device) return
+        teardown()
+        _state.value = UsbState.NoDevice
+    }
+
     fun release() {
         wanted = false
         teardown()

@@ -41,12 +41,13 @@ class HorizonViewModelTest {
         val settings = InMemorySettingsStore()
         var permissionRequests = 0
         var reconnects = 0
+        val lost = mutableListOf<HorizonDevice>()
 
         // Not backgroundScope: advanceUntilIdle ignores background work. Cancelled when the test ends.
         val vmScope = CoroutineScope(StandardTestDispatcher(scope.testScheduler) + Job()).also { vs ->
             scope.backgroundScope.coroutineContext.job.invokeOnCompletion { vs.cancel() }
         }
-        val vm = HorizonViewModel(usb, presets, settings, { permissionRequests++ }, vmScope, { reconnects++ })
+        val vm = HorizonViewModel(usb, presets, settings, { permissionRequests++ }, vmScope, { reconnects++ }, { lost += it })
         val state get() = vm.state.value
 
         fun newDevice(): Pair<FakeHorizon, HorizonDevice> {
@@ -184,6 +185,7 @@ class HorizonViewModelTest {
         assertEquals(ConnState.Disconnected, r.state.conn)
         assertEquals(UiError.Disconnected, r.state.error)
         assertFalse(r.state.busy)
+        assertEquals(listOf(r.device), r.lost)
 
         // The connector notices the detach: stays Disconnected (there was a connection).
         r.usb.value = UsbState.NoDevice
@@ -330,6 +332,15 @@ class HorizonViewModelTest {
         // Never left on a spinner.
         assertEquals(ConnState.Disconnected, r.state.conn)
         assertFalse(r.state.busy)
+        // The USB layer is told to drop this device (release the claim, so the inline buttons work).
+        assertEquals(listOf(dev), r.lost)
+        // "Try again" asks for a fresh connection; a new device object is read from scratch.
+        r.vm.retryConnect()
+        assertEquals(1, r.reconnects)
+        val (_, d2) = r.newDevice()
+        r.usb.value = UsbState.Connected(d2)
+        runCurrent()
+        assertEquals(ConnState.Ready, r.state.conn)
     }
 
     /** Transport wrapper over the rig's fake that can fail writes (or everything) on demand. */
