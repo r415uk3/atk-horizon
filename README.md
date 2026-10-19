@@ -16,6 +16,13 @@ A free, open-source alternative to ATK Hub, with an 8-band parametric EQ and a L
 
 <sub>ATK Horizon with USB-C · English and Russian · no internet permission</sub>
 
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screens-dark.png">
+  <img src="docs/images/screens-light.png" alt="ATK Horizon: equalizer, microphone and device screens" width="860">
+</picture>
+
 </div>
 
 ## Features
