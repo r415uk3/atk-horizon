@@ -71,6 +71,54 @@ class SerialOpenerTest {
         assertEquals(null, opener.pendingKey)
     }
 
+    @Test
+    fun throwingOpenDeliversNullAndTheNextOpenProceeds() = runTest {
+        val events = mutableListOf<String>()
+        val results = mutableListOf<String?>()
+        // e.g. UsbManager.openDevice throwing IllegalArgumentException (device gone) or SecurityException.
+        val opener = SerialOpener<String, String>(
+            this, StandardTestDispatcher(testScheduler),
+            open = { key ->
+                events += "open $key"
+                if (key == "a") throw IllegalArgumentException("device gone")
+                key
+            },
+            close = { events += "close $it" },
+        )
+        opener.start("a") { results += it }
+        advanceUntilIdle()
+        assertEquals(listOf<String?>(null), results)
+        assertEquals(null, opener.pendingKey)
+        opener.start("b") { results += it }
+        advanceUntilIdle()
+        assertEquals(listOf("open a", "open b"), events)
+        assertEquals(listOf(null, "b"), results)
+    }
+
+    @Test
+    fun throwingCloseOfAnAbandonedOpenDoesNotBlockTheNextOpen() = runTest {
+        val events = mutableListOf<String>()
+        val results = mutableListOf<String?>()
+        lateinit var opener: SerialOpener<String, String>
+        opener = SerialOpener(
+            scope = this,
+            io = StandardTestDispatcher(testScheduler),
+            open = { key ->
+                events += "open $key"
+                if (key == "a") {
+                    opener.abandon()
+                    opener.start("b") { results += it }
+                }
+                key
+            },
+            close = { events += "close $it"; throw IllegalStateException("close failed") },
+        )
+        opener.start("a") { results += it }
+        advanceUntilIdle()
+        assertEquals(listOf("open a", "close a", "open b"), events)
+        assertEquals(listOf("b"), results)
+    }
+
     private class ManualDispatcher : CoroutineDispatcher() {
         private val queue = ArrayDeque<Runnable>()
         override fun dispatch(context: CoroutineContext, block: Runnable) { queue.addLast(block) }

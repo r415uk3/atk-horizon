@@ -16,6 +16,9 @@ import kotlinx.coroutines.withContext
  * - abandoned after it returned: closed from [scope] before that start's job completes, and the
  *   next [start] joins that job before dispatching its own open.
  *
+ * An [open] or [close] that throws is treated as a failed open (null) / a finished close, so a
+ * USB exception never escapes into [scope] and [pendingKey] is always cleared.
+ *
  * [start], [abandon] and [pendingKey] are main-thread only; [open]/[close] run on [io].
  */
 internal class SerialOpener<K : Any, T : Any>(
@@ -23,6 +26,8 @@ internal class SerialOpener<K : Any, T : Any>(
     private val io: CoroutineDispatcher,
     private val open: (K) -> T?,
     private val close: (T) -> Unit,
+    /** Reports an exception thrown by [open] or [close] (logging only). */
+    private val onError: (Exception) -> Unit = {},
 ) {
     private val generation = AtomicInteger()
     private var job: Job? = null
@@ -41,10 +46,15 @@ internal class SerialOpener<K : Any, T : Any>(
             previous?.join()
             var abandoned = false
             val opened = withContext(io) {
-                val o = open(key)
+                val o = try {
+                    open(key)
+                } catch (e: Exception) {
+                    onError(e)
+                    null
+                }
                 if (generation.get() != gen) {
                     abandoned = true
-                    o?.let(close)
+                    o?.let(::safeClose)
                     null
                 } else {
                     o
@@ -52,11 +62,19 @@ internal class SerialOpener<K : Any, T : Any>(
             }
             if (abandoned) return@launch
             if (generation.get() != gen) {
-                opened?.let { o -> scope.launch(io + NonCancellable) { close(o) } }
+                opened?.let { o -> scope.launch(io + NonCancellable) { safeClose(o) } }
                 return@launch
             }
             pendingKey = null
             onResult(opened)
+        }
+    }
+
+    private fun safeClose(o: T) {
+        try {
+            close(o)
+        } catch (e: Exception) {
+            onError(e)
         }
     }
 

@@ -61,7 +61,10 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
     /** Serialized lane for blocking USB calls. */
     private val usbIo = Dispatchers.IO.limitedParallelism(1)
     /** Opens on [usbIo]; an abandoned open is closed before the next one starts. */
-    private val opener = SerialOpener<UsbDevice, Opened>(scope, usbIo, open = ::connect, close = ::close)
+    private val opener = SerialOpener<UsbDevice, Opened>(
+        scope, usbIo, open = ::connect, close = ::close,
+        onError = { Log.e(TAG, "USB open/close failed", it) },
+    )
 
     /** An opened and claimed HID interface, before the protocol objects are built. */
     private class Opened(
@@ -171,10 +174,30 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
 
     private fun abandonConnect() = opener.abandon()
 
-    /** Blocking; runs on [usbIo]. */
+    /**
+     * Blocking; runs on [usbIo]. Never throws: openDevice / claimInterface / descriptor reads throw
+     * (IllegalArgumentException when the device is gone, SecurityException without permission) on
+     * an unplug/replug race; that is a failed open (null) with the connection closed.
+     */
     private fun connect(device: UsbDevice): Opened? {
         Log.d(TAG, "opening ${describe(device)}")
-        val conn = usb.openDevice(device) ?: run { Log.e(TAG, "openDevice returned null"); return null }
+        val conn = try {
+            usb.openDevice(device)
+        } catch (e: Exception) {
+            Log.e(TAG, "openDevice failed", e)
+            null
+        } ?: run { Log.e(TAG, "openDevice returned null"); return null }
+        return try {
+            claim(device, conn)
+        } catch (e: Exception) {
+            Log.e(TAG, "opening the HID interface failed", e)
+            runCatching { conn.close() }
+            null
+        }
+    }
+
+    /** Claims the HID interface on an open [conn]; closes [conn] itself on a clean failure. */
+    private fun claim(device: UsbDevice, conn: UsbDeviceConnection): Opened? {
         val ifaces = (0 until device.interfaceCount).map(device::getInterface)
         // Claim every HID interface (force: detaches the kernel driver) so its report descriptor
         // can be read; keep the chosen one and release the rest (Android reattaches their driver).
@@ -236,12 +259,12 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
         scope.launch(usbIo + NonCancellable) { close(s.opened) }
     }
 
-    /** Blocking; runs on [usbIo]. */
+    /** Blocking; runs on [usbIo]. Never throws; each step runs even if an earlier one failed. */
     private fun close(o: Opened) {
         Log.d(TAG, "releasing interface ${o.iface.id}")
-        o.transport.close()
-        o.conn.releaseInterface(o.iface)
-        o.conn.close()
+        runCatching { o.transport.close() }.onFailure { Log.e(TAG, "transport close failed", it) }
+        runCatching { o.conn.releaseInterface(o.iface) }.onFailure { Log.e(TAG, "releaseInterface failed", it) }
+        runCatching { o.conn.close() }.onFailure { Log.e(TAG, "close failed", it) }
     }
 
     private fun describe(d: UsbDevice) =
