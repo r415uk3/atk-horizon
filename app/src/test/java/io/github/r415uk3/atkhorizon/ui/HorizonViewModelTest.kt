@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
@@ -39,12 +40,13 @@ class HorizonViewModelTest {
         val presets = InMemoryPresetStore()
         val settings = InMemorySettingsStore()
         var permissionRequests = 0
+        var reconnects = 0
 
         // Not backgroundScope: advanceUntilIdle ignores background work. Cancelled when the test ends.
         val vmScope = CoroutineScope(StandardTestDispatcher(scope.testScheduler) + Job()).also { vs ->
             scope.backgroundScope.coroutineContext.job.invokeOnCompletion { vs.cancel() }
         }
-        val vm = HorizonViewModel(usb, presets, settings, { permissionRequests++ }, vmScope)
+        val vm = HorizonViewModel(usb, presets, settings, { permissionRequests++ }, vmScope, { reconnects++ })
         val state get() = vm.state.value
 
         fun newDevice(): Pair<FakeHorizon, HorizonDevice> {
@@ -221,10 +223,12 @@ class HorizonViewModelTest {
         r.usb.value = UsbState.Connecting
         runCurrent()
         assertEquals(ConnState.Loading, r.state.conn)
-        // The open failed: not "plug the headset in", but Disconnected.
+        // The open failed: not "plug the headset in", but Disconnected, with a retry.
         r.usb.value = UsbState.NoDevice
         runCurrent()
         assertEquals(ConnState.Disconnected, r.state.conn)
+        r.vm.retryConnect()
+        assertEquals(1, r.reconnects)
     }
 
     @Test
@@ -487,6 +491,40 @@ class HorizonViewModelTest {
         r.vm.flushPending()
         advanceUntilIdle()
         assertEquals(1, saves(r.fake))
+    }
+
+    @Test
+    fun flushCompletesWhenViewModelIsClearedMidCommit() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.fake.log.clear()
+        val edit = EqBand(FilterType.Peak, 2000, 1.2, -4.0)
+        r.vm.onBandDrag(6, edit)
+        advanceTimeBy(100)
+        // As AtkApp does: the flush runs on the app scope (here the test scope), not the VM scope.
+        val flush = launch { r.vm.flushPending() }
+        advanceTimeBy(300) // inside the commit's 1000 ms pause, before 0x01
+        assertEquals(0, saves(r.fake))
+        r.vmScope.cancel() // activity finishing: the ViewModel is cleared
+        advanceUntilIdle()
+        assertTrue(flush.isCompleted)
+        assertEquals(1, saves(r.fake))
+        assertEquals(edit, r.fake.flashBands[6].band)
+    }
+
+    @Test
+    fun runningDebouncedCommitCompletesWhenViewModelIsCleared() = runTest {
+        val r = Rig(this)
+        runCurrent()
+        r.fake.log.clear()
+        val edit = EqBand(FilterType.Peak, 4000, 0.9, 3.0)
+        r.vm.setBand(7, edit)
+        advanceTimeBy(800) // debounce (500) elapsed, commit in its 1000 ms pause
+        assertEquals(0, saves(r.fake))
+        r.vmScope.cancel()
+        advanceUntilIdle()
+        assertEquals(1, saves(r.fake))
+        assertEquals(edit, r.fake.flashBands[7].band)
     }
 
     @Test

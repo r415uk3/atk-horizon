@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 sealed interface UsbState {
     data object NoDevice : UsbState
@@ -61,10 +60,8 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
 
     /** Serialized lane for blocking USB calls. */
     private val usbIo = Dispatchers.IO.limitedParallelism(1)
-    /** Device name being opened on [usbIo]; null when no open is in flight. */
-    private var connecting: String? = null
-    /** Bumped to abandon an in-flight open (its result is then closed instead of used). */
-    private var generation = 0
+    /** Opens on [usbIo]; an abandoned open is closed before the next one starts. */
+    private val opener = SerialOpener<UsbDevice, Opened>(scope, usbIo, open = ::connect, close = ::close)
 
     /** An opened and claimed HID interface, before the protocol objects are built. */
     private class Opened(
@@ -159,39 +156,20 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
             }
             return
         }
-        if (connecting == horizon.deviceName) return
-        startConnect(horizon)
-    }
-
-    private fun abandonConnect() {
-        if (connecting == null) return
-        connecting = null
-        generation++
-    }
-
-    private fun startConnect(device: UsbDevice) {
-        abandonConnect()
-        val gen = generation
-        connecting = device.deviceName
+        if (opener.pendingKey?.deviceName == horizon.deviceName) return
         _state.value = UsbState.Connecting
-        // Not cancelled on abandon (the blocking open can't be interrupted); the generation check
-        // decides whether the result is used or closed.
-        scope.launch {
-            val opened = withContext(usbIo) { connect(device) }
-            if (gen != generation) {
-                opened?.let { o -> scope.launch(usbIo + NonCancellable) { close(o) } }
-                return@launch
-            }
-            connecting = null
+        opener.start(horizon) { opened ->
             if (opened == null) {
                 // Leaves Connecting; the next attach/permission/open event retries.
                 _state.value = UsbState.NoDevice
-                return@launch
+                return@start
             }
             session = Session(opened, HorizonDevice(HorizonLink(opened.transport, scope)))
             refresh()
         }
     }
+
+    private fun abandonConnect() = opener.abandon()
 
     /** Blocking; runs on [usbIo]. */
     private fun connect(device: UsbDevice): Opened? {

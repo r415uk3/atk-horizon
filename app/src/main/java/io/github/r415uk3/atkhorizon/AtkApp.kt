@@ -56,9 +56,10 @@ class AtkApp : Application() {
     }
 
     /**
-     * Saves pending edits to flash, then releases the claim so the inline buttons work again. Runs
-     * on the app scope so it completes even if the activity is being destroyed; skipped if the UI
-     * came back meanwhile.
+     * Saves pending edits to flash, then releases the claim so the inline buttons work again.
+     * [flushPending] runs here, on the app scope, and the ViewModel's commits are non-cancellable
+     * once started, so clearing the ViewModel (activity finishing) does not cut the flash-save
+     * short. The release is skipped if the UI came back meanwhile.
      */
     fun onUiStopped(flushPending: suspend () -> Unit) {
         foreground = false

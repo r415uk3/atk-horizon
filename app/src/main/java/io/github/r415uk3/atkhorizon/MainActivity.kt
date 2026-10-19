@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
                     presetStore = PresetRepository(app.dataStore),
                     settings = SettingsRepository(app.dataStore),
                     requestPermission = app.connector::requestPermission,
+                    reconnect = app.connector::open,
                 )
             }
         }

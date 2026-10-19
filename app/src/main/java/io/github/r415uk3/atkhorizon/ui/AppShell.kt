@@ -117,7 +117,7 @@ fun AppShell(vm: HorizonViewModel) {
                         settingsOpen -> PlaceholderScreen(R.string.theme_title)
                         !hasDevice -> StatusScreen(
                             state.conn,
-                            onAction = vm::retryPermission,
+                            onAction = if (state.conn == ConnState.Disconnected) vm::retryConnect else vm::retryPermission,
                             modifier = Modifier.navigationBarsPadding().padding(bottom = 16.dp),
                         )
                         else -> PlaceholderScreen(

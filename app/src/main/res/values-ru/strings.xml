@@ -24,6 +24,7 @@
     <string name="status_denied_action">Повторить</string>
     <string name="status_disconnected_title">Отключено</string>
     <string name="status_disconnected_body">Гарнитура отключена или перестала отвечать. Подключите её снова.</string>
+    <string name="status_disconnected_action">Повторить</string>
 
     <!-- Errors -->
     <string name="error_verify_failed">Гарнитура не подтвердила изменение. Показано то, что в ней на самом деле.</string>

@@ -30,9 +30,11 @@ class ShellMappingTest {
         val unsupported = statusContent(ConnState.Unsupported(0x129F))!!
         assertEquals(R.string.status_unsupported_title, unsupported.title)
         assertEquals("129F", unsupported.titleArg)
-        // Permission states offer a button; the rest need a physical action.
+        // Permission states and Disconnected offer a button; the rest need a physical action.
         assertNotNull(statusContent(ConnState.NeedsPermission)!!.action)
         assertNotNull(statusContent(ConnState.PermissionDenied)!!.action)
+        assertEquals(R.string.status_disconnected_action, statusContent(ConnState.Disconnected)!!.action)
         assertNull(statusContent(ConnState.NoDevice)!!.action)
+        assertNull(statusContent(ConnState.Unsupported(0x129F))!!.action)
     }
 }

@@ -25,6 +25,7 @@
     <string name="status_denied_action">Try again</string>
     <string name="status_disconnected_title">Disconnected</string>
     <string name="status_disconnected_body">The headset was unplugged or stopped responding. Plug it in again.</string>
+    <string name="status_disconnected_action">Try again</string>
 
     <!-- Errors -->
     <string name="error_verify_failed">The headset didn\'t confirm the change. Showing what it actually holds.</string>

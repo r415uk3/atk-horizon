@@ -48,7 +48,10 @@ internal fun statusContent(conn: ConnState): StatusContent? = when (conn) {
     ConnState.PermissionDenied -> StatusContent(
         R.string.status_denied_title, body = R.string.status_denied_body, action = R.string.status_denied_action,
     )
-    ConnState.Disconnected -> StatusContent(R.string.status_disconnected_title, body = R.string.status_disconnected_body)
+    ConnState.Disconnected -> StatusContent(
+        R.string.status_disconnected_title, body = R.string.status_disconnected_body,
+        action = R.string.status_disconnected_action,
+    )
     ConnState.Loading, ConnState.Ready -> null
 }
 

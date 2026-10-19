@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Turns USB state, device operations and the preset/settings stores into [UiState].
@@ -45,6 +47,8 @@ class HorizonViewModel(
     private val settings: SettingsStore,
     private val requestPermission: () -> Unit,
     scope: CoroutineScope? = null,
+    /** Asks the USB layer to open the headset again (after a failed open or a lost device). */
+    private val reconnect: () -> Unit = {},
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -79,7 +83,6 @@ class HorizonViewModel(
         var presetJob: Job? = null
         /** Soft reset: never cancelled by a preset select (which queues behind it). */
         var resetJob: Job? = null
-        var commitJob: Job? = null
         /** Last offsets / NC the device confirmed; shown again when a write fails. */
         var knownDac = 0.0
         var knownAdc = 0.0
@@ -331,27 +334,36 @@ class HorizonViewModel(
         s.debounceJob = s.cs.launch {
             delay(COMMIT_DEBOUNCE_MS)
             // Separate job: a later edit restarts the debounce but never cancels a running commit.
-            s.commitJob = s.cs.launch { commit(s) }
+            s.cs.launch { commit(s) }
         }
     }
 
     /**
      * Commits pending edits now (skipping the debounce) and waits for it, so edits reach flash
      * before the USB claim is released (called from onStop). No-op when nothing is pending.
+     *
+     * The commit runs in the caller's coroutine (AtkApp: the app scope), not in the ViewModel's
+     * scope, and like every commit it is non-cancellable once started: clearing the ViewModel
+     * (activity finishing) cannot cut the flash-save scheme short. It takes the same I/O lock, so
+     * it queues behind (and waits for) a commit already running.
      */
     suspend fun flushPending() {
         val s = session ?: return
-        val debouncing = s.debounceJob?.isActive == true
         s.debounceJob?.cancel()
-        val job = if (debouncing || s.dirty.isNotEmpty()) {
-            s.cs.launch { commit(s) }.also { s.commitJob = it }
-        } else {
-            s.commitJob
-        }
-        job?.join()
+        // Waits for the I/O lock, so a running commit finishes first; commits whatever is still dirty.
+        commit(s)
     }
 
+    /**
+     * Writes dirty bands and saves them to flash. Non-cancellable once started (session end or
+     * ViewModel clearing included): a half-run scheme would leave edits in RAM only. On a lost
+     * device it fails fast with DeviceGoneException.
+     */
     private suspend fun commit(s: Session) {
+        withContext(NonCancellable) { commitNow(s) }
+    }
+
+    private suspend fun commitNow(s: Session) {
         var batch = emptyMap<Int, EqBand>()
         op(s, onFail = { settle(s, batch) }) { d ->
             batch = s.dirty.toMap()
@@ -506,6 +518,8 @@ class HorizonViewModel(
     fun dismissError() = _state.update { it.copy(error = null) }
 
     fun retryPermission() = requestPermission()
+
+    fun retryConnect() = reconnect()
 
     private companion object {
         const val LIVE_THROTTLE_MS = 60L
