@@ -34,6 +34,12 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
     var dropOffsetWrites = false
     var dropNcWrites = false
 
+    /**
+     * Band index → number of 0x09 read replies that carry the next band's data (and index) instead,
+     * like a late reply to an earlier request being taken for this one.
+     */
+    val wrongIndexReplies = mutableMapOf<Int, Int>()
+
     /** Added (in 1/256 dB units) to every stored offset write, to simulate a device that applies a slightly different value. */
     var offsetPerturbRaw = 0
 
@@ -89,7 +95,13 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
         r[1] = req[1]
         when (cmd) {
             0x09 -> {
-                val raw = rawBands.getOrNull(req[4].toInt() and 0xFF) ?: return null
+                var index = req[4].toInt() and 0xFF
+                val wrong = wrongIndexReplies[index] ?: 0
+                if (wrong > 0) {
+                    wrongIndexReplies[index] = wrong - 1
+                    index = (index + 1) % rawBands.size
+                }
+                val raw = rawBands.getOrNull(index) ?: return null
                 raw.copyInto(r)
                 r[0] = req[0]
                 r[1] = req[1]

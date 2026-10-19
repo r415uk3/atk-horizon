@@ -194,4 +194,34 @@ class HorizonDeviceTest {
         assertEquals(0.0, snap.dacOffset, 0.0)
         assertEquals(0.0, snap.adcOffset, 0.0)
     }
+
+    @Test
+    fun snapshotRereadsABandWhoseReplyHasTheWrongIndex() = runTest {
+        val r = Rig(this)
+        custom.forEachIndexed { i, b -> r.dev.liveBand(i, b) }
+        r.fake.log.clear()
+        r.fake.wrongIndexReplies[3] = 1
+        val s = r.dev.readSnapshot()
+        assertEquals((0 until 8).toList(), s.bands.map { it.index })
+        assertEquals(custom, s.bands.map { it.band })
+        assertEquals(9, r.fake.log.count { it.cmd == 0x09 })
+    }
+
+    @Test
+    fun snapshotFailsWhenABandKeepsAnsweringWithTheWrongIndex() = runTest {
+        val r = Rig(this)
+        r.fake.wrongIndexReplies[5] = 2
+        val e = runCatching { r.dev.readSnapshot() }.exceptionOrNull()
+        assertTrue("$e", e is VerifyException)
+        assertEquals(listOf(5), (e as VerifyException).mismatchedBands)
+    }
+
+    @Test
+    fun commitReadBackRereadsAWrongIndexReply() = runTest {
+        val r = Rig(this)
+        r.fake.wrongIndexReplies[2] = 1
+        val back = r.dev.applyPreset(custom)
+        assertEquals((0 until 8).toList(), back.map { it.index })
+        assertEquals(custom, back.map { it.band })
+    }
 }

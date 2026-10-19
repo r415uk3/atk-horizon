@@ -29,7 +29,7 @@ class SuspiciousDeviceValueException(what: String, val value: Double) :
 class HorizonDevice(private val link: HorizonLink) {
     suspend fun readSnapshot(): DeviceSnapshot {
         val fw = Responses.firmware(link.request(Packets.readFirmware()))
-        val bands = (0 until BAND_COUNT).map { Responses.band(link.request(Packets.readBand(it))) }
+        val bands = (0 until BAND_COUNT).map { readBand(it) }
         val dac = Responses.offsetDb(link.request(Packets.readDacOffset()))
         val adc = Responses.offsetDb(link.request(Packets.readAdcOffset()))
         val nc = Responses.noiseCancelling(link.request(Packets.readNoiseCancelling()))
@@ -60,12 +60,24 @@ class HorizonDevice(private val link: HorizonLink) {
         link.write(Packets.setDacOffset(dac))
         link.delay(1000)
         link.write(Packets.saveToFlash())
-        val back = bands.keys.map { Responses.band(link.request(Packets.readBand(it))) }
+        val back = bands.keys.map { readBand(it) }
         val bad = bands.entries.zip(back).filter { (e, got) ->
             got != Responses.band(Packets.writeBand(e.key, e.value))
         }.map { it.first.key }
         if (bad.isNotEmpty()) throw VerifyException(bad)
         return back
+    }
+
+    /**
+     * Reads band [i]. A reply carrying another band's index (e.g. a late reply to an earlier,
+     * retried request) is never taken for band [i]: it is re-requested once, then [VerifyException].
+     */
+    private suspend fun readBand(i: Int): DeviceBand {
+        repeat(2) {
+            val b = Responses.band(link.request(Packets.readBand(i)))
+            if (b.index == i) return b
+        }
+        throw VerifyException(listOf(i))
     }
 
     suspend fun applyPreset(bands: List<EqBand>): List<DeviceBand> =
