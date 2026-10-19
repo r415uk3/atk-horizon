@@ -9,19 +9,19 @@ An Android app to configure ATK Horizon USB-C headphones: presets and an 8-band 
 
 ## Requirements
 
-- Android 13 or newer (tested target: Android 16).
+- Android 13 or newer (target SDK: Android 16, API 36).
 - A phone with USB host (OTG) support.
 
 ## Install from the APK
 
-1. Build the APK (see below) or take a prebuilt `app-release.apk`.
+1. Build the APK (see below). No prebuilt APK is published yet.
 2. Either allow installing from unknown sources for your file manager or browser and open the APK, or install over adb:
    ```
    adb install app/build/outputs/apk/release/app-release.apk
    ```
 3. Plug in the headphones and grant USB access when asked.
 
-The release build is signed with the debug key (personal build).
+The release build is signed with the local debug key of the machine that built it (personal build). Android only installs an update signed with the same key, so an APK built on another machine cannot update an installed one: uninstall it first (this deletes the presets saved in the app).
 
 ## Build
 
@@ -43,7 +43,7 @@ The APK is written to `app/build/outputs/apk/release/`. Run the unit tests with 
 
 ## Known behaviour
 
-The in-line remote buttons may not work while the app is in the foreground, because the app claims the HID interface. They work again when the app goes to the background.
+The in-line remote buttons may not work while the app is in the foreground, most likely because the app claims the headset's HID interface. They should work again when the app goes to the background, when it releases the interface.
 
 ## Protocol
 
