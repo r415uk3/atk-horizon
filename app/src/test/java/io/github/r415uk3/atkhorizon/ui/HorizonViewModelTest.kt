@@ -3,6 +3,7 @@ package io.github.r415uk3.atkhorizon.ui
 import io.github.r415uk3.atkhorizon.data.BuiltInPresets
 import io.github.r415uk3.atkhorizon.data.InMemoryPresetStore
 import io.github.r415uk3.atkhorizon.data.InMemorySettingsStore
+import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.protocol.EqBand
 import io.github.r415uk3.atkhorizon.protocol.FakeHorizon
 import io.github.r415uk3.atkhorizon.protocol.FilterType
@@ -33,11 +34,11 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HorizonViewModelTest {
-    private class Rig(val scope: TestScope, initial: UsbState? = null) {
+    private class Rig(val scope: TestScope, initial: UsbState? = null, custom: List<Preset> = emptyList()) {
         val fake = FakeHorizon { scope.currentTime }
         val device = HorizonDevice(HorizonLink(fake, scope.backgroundScope))
         val usb = MutableStateFlow(initial ?: UsbState.Connected(device))
-        val presets = InMemoryPresetStore()
+        val presets = InMemoryPresetStore(custom)
         val settings = InMemorySettingsStore()
         var permissionRequests = 0
         var reconnects = 0
@@ -668,5 +669,51 @@ class HorizonViewModelTest {
         assertTrue(flush.isCompleted)
         assertEquals(0.0, dacWhenFlushed, 0.0)
         assertEquals(encoded(EqBand.DEFAULTS), r.fake.flashBands)
+    }
+
+    @Test
+    fun invalidStoredPresetsAreClampedOrRejectedBeforeWriting() = runTest {
+        val q0 = EqBand.DEFAULTS.toMutableList().also { it[1] = EqBand(FilterType.Peak, 62, 0.0, 3.0) }
+        val nan = EqBand.DEFAULTS.toMutableList().also { it[4] = EqBand(FilterType.Peak, 500, 1.0, Double.NaN) }
+        val r = Rig(
+            this,
+            custom = listOf(
+                Preset("custom-q0", "q0", q0, builtIn = false),
+                Preset("custom-nine", "nine", EqBand.DEFAULTS + EqBand.DEFAULTS[0], builtIn = false),
+                Preset("custom-nan", "nan", nan, builtIn = false),
+            ),
+        )
+        runCurrent()
+        r.fake.log.clear()
+
+        r.vm.selectPreset("custom-nine")
+        advanceUntilIdle()
+        assertEquals(UiError.PresetStorage, r.state.error)
+        r.vm.selectPreset("custom-nan")
+        advanceUntilIdle()
+        assertEquals(UiError.UnstableFilter(4), r.state.error)
+        assertTrue(r.fake.log.none { it.dir == 0x01 })
+        assertEquals(EqBand.DEFAULTS, r.state.bands)
+
+        // q 0 would give Inf/NaN coefficients: clamped to the UI range (0.1) before writing.
+        r.vm.selectPreset("custom-q0")
+        advanceUntilIdle()
+        assertEquals(EqBand(FilterType.Peak, 62, 0.1, 3.0), r.fake.flashBands[1].band)
+        assertEquals(r.fake.bands.map { it.band }, r.state.bands)
+    }
+
+    @Test
+    fun presetSavedFromOutOfRangeDeviceValuesIsClamped() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        // Band 2 holds q 0 and fc 0 (e.g. set by another app).
+        r.fake.send(Packets.writeBand(2, EqBand(FilterType.Peak, 125, 0.75, 1.0)).also { it[27] = 0; it[28] = 0; it[29] = 0; it[30] = 0 })
+        r.usb.value = UsbState.Connected(r.device)
+        runCurrent()
+        assertEquals(0.0, r.state.bands[2].q, 0.0)
+        r.vm.saveAsPreset("From device")
+        advanceUntilIdle()
+        val saved = r.state.presets.single { it.name == "From device" }
+        assertEquals(EqBand(FilterType.Peak, 20, 0.1, 1.0), saved.bands[2])
+        assertEquals(8, saved.bands.size)
     }
 }

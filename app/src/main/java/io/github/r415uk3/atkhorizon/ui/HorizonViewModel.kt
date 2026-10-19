@@ -422,11 +422,25 @@ class HorizonViewModel(
 
     // ---- Presets ----
 
+    /** [bands] clamped to the UI limits, and the index of the first band still invalid (NaN) or unstable (or null). */
+    private fun validPresetBands(bands: List<EqBand>): Pair<List<EqBand>, Int?> {
+        val clamped = bands.map { it.clamped() }
+        val bad = clamped.indexOfFirst { !inUiRange(it) || !encodable(it) }
+        return clamped to bad.takeIf { it >= 0 }
+    }
+
+    /**
+     * A stored preset is validated before anything is written: it must have 8 bands (else
+     * [UiError.PresetStorage]); values are clamped to the UI limits, and a band that is still
+     * invalid or unstable is refused ([UiError.UnstableFilter]).
+     */
     fun selectPreset(id: String) {
         val s = readySession() ?: return
-        val p = _state.value.presets.firstOrNull { it.id == id } ?: return
-        val bad = p.bands.indexOfFirst { !encodable(it) }
-        if (bad >= 0) return setError(UiError.UnstableFilter(bad))
+        val stored = _state.value.presets.firstOrNull { it.id == id } ?: return
+        if (stored.bands.size != s.deviceBands.size) return setError(UiError.PresetStorage)
+        val (bands, bad) = validPresetBands(stored.bands)
+        if (bad != null) return setError(UiError.UnstableFilter(bad))
+        val p = stored.copy(bands = bands)
         s.debounceJob?.cancel()
         s.live.clear()
         s.dirty.clear()
@@ -450,9 +464,14 @@ class HorizonViewModel(
         }
     }
 
+    /**
+     * Saves the displayed curve, clamped to the UI limits (a device band may hold e.g. q 0 set by
+     * another app). A band that is still invalid or unstable is refused.
+     */
     fun saveAsPreset(name: String) {
         readySession() ?: return
-        val bands = _state.value.bands
+        val (bands, bad) = validPresetBands(_state.value.bands)
+        if (bad != null) return setError(UiError.UnstableFilter(bad))
         scope.launch {
             storage {
                 val p = presetStore.create(name, bands)

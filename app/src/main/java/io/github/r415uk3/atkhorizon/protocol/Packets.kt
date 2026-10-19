@@ -28,8 +28,12 @@ private fun round1(x: Double) = floor(x * 10 + 0.5) / 10
 
 private fun round2(x: Double) = floor(x * 100 + 0.5) / 100
 
+/** The device has bands 0..7; no packet may address another index. */
+private fun checkBand(index: Int) = require(index in 0..7) { "band index $index outside 0..7" }
+
 object Packets {
     fun writeBand(index: Int, b: EqBand): ByteArray {
+        checkBand(index)
         val a = pkt(0x01, 0x09, 0x18, 0x00, index)
         Biquad.coefficientBytes(b.type, b.fc, b.q, b.gainDb).copyInto(a, 7)
         putU16(a, 27, b.fc)
@@ -39,7 +43,10 @@ object Packets {
         return a
     }
 
-    fun readBand(index: Int): ByteArray = pkt(0x80, 0x09, 0x02, 0x00, index)
+    fun readBand(index: Int): ByteArray {
+        checkBand(index)
+        return pkt(0x80, 0x09, 0x02, 0x00, index)
+    }
     fun commitCoefficients(): ByteArray = pkt(0x01, 0x0A, 0x04, 0x00, 0x00, 0xFF, 0xFF)
     fun saveToFlash(): ByteArray = pkt(0x01, 0x01)
 

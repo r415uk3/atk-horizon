@@ -247,4 +247,13 @@ class HorizonDeviceTest {
         val live = listOf(0x01 to 0x09, 0x01 to 0x0A)
         assertEquals(apply + snapshot + nc + live, pairs)
     }
+
+    @Test
+    fun presetMustHaveEightBandsAndIndicesZeroToSeven() = runTest {
+        val r = Rig(this)
+        assertTrue(runCatching { r.dev.applyPreset(custom + custom[0]) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { r.dev.applyPreset(custom.take(7)) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { r.dev.commitBands(mapOf(8 to custom[0])) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(r.fake.log.isEmpty())
+    }
 }

@@ -91,4 +91,12 @@ class PacketsTest {
             assertTrue("${m.name} cmd=$cmd", cmd in allowed)
         }
     }
+
+    @Test fun bandIndexOutsideZeroToSevenIsRejected() {
+        val b = EqBand(FilterType.Peak, 60, 0.7, -4.0)
+        for (i in listOf(-1, 8, 255)) {
+            assertTrue(runCatching { Packets.writeBand(i, b) }.exceptionOrNull() is IllegalArgumentException)
+            assertTrue(runCatching { Packets.readBand(i) }.exceptionOrNull() is IllegalArgumentException)
+        }
+    }
 }

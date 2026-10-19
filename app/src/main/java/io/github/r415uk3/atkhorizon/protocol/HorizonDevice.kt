@@ -50,10 +50,15 @@ class HorizonDevice(private val link: HorizonLink) {
      * read back and verify. The current DAC offset is read first and must be plausible
      * ([SuspiciousDeviceValueException] otherwise, before any write).
      */
-    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> = lock.withLock { commit(bands, dacOverride = null) }
+    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> {
+        require(bands.keys.all { it in 0 until BAND_COUNT }) { "band indices ${bands.keys} outside 0..7" }
+        return lock.withLock { commit(bands, dacOverride = null) }
+    }
 
-    suspend fun applyPreset(bands: List<EqBand>): List<DeviceBand> =
-        commitBands(bands.mapIndexed { i, b -> i to b }.toMap())
+    suspend fun applyPreset(bands: List<EqBand>): List<DeviceBand> {
+        require(bands.size == BAND_COUNT) { "a preset has $BAND_COUNT bands, got ${bands.size}" }
+        return commitBands(bands.mapIndexed { i, b -> i to b }.toMap())
+    }
 
     suspend fun setDacOffset(db: Double) = lock.withLock { setDac(db) }
 
