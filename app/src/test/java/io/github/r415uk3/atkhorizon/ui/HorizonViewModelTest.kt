@@ -211,7 +211,20 @@ class HorizonViewModelTest {
         assertEquals(ConnState.NoDevice, r.state.conn)
         r.usb.value = UsbState.Unsupported(0x129F)
         runCurrent()
-        assertEquals(ConnState.Unsupported, r.state.conn)
+        assertEquals(ConnState.Unsupported(0x129F), r.state.conn)
+    }
+
+    @Test
+    fun connectingShowsLoadingAndFailedOpenShowsDisconnected() = runTest {
+        val r = Rig(this, UsbState.NoDevice)
+        runCurrent()
+        r.usb.value = UsbState.Connecting
+        runCurrent()
+        assertEquals(ConnState.Loading, r.state.conn)
+        // The open failed: not "plug the headset in", but Disconnected.
+        r.usb.value = UsbState.NoDevice
+        runCurrent()
+        assertEquals(ConnState.Disconnected, r.state.conn)
     }
 
     @Test

@@ -7,7 +7,7 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 datastore = "1.2.1"
 lifecycle = "2.10.0"
-haze = "2.0.1"
+haze = "1.7.2"
 junit = "4.13.2"
 
 [libraries]

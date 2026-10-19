@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_title">Horizon</string>
+
+    <!-- Navigation -->
+    <string name="tab_sound">Звук</string>
+    <string name="tab_mic">Микрофон</string>
+    <string name="tab_device">Устройство</string>
+    <string name="settings_open">Настройки</string>
+    <string name="settings_close">Закрыть</string>
+
+    <!-- Connection -->
+    <string name="status_connected">Подключено · USB-C</string>
+    <string name="status_loading">Читаем настройки гарнитуры…</string>
+    <string name="status_no_device_title">Подключите ATK Horizon</string>
+    <string name="status_no_device_body">Подключите гарнитуру к разъёму USB-C телефона.</string>
+    <string name="status_unsupported_title">Неподдерживаемое устройство (PID %1$s)</string>
+    <string name="status_unsupported_body">Это устройство ATK не поддерживается. Приложение работает только с ATK Horizon (PID 120C).</string>
+    <string name="status_needs_permission_title">Разрешите доступ к USB</string>
+    <string name="status_needs_permission_body">Android должен разрешить приложению общаться с гарнитурой.</string>
+    <string name="status_needs_permission_action">Разрешить доступ</string>
+    <string name="status_denied_title">Доступ запрещён</string>
+    <string name="status_denied_body">Без доступа к USB приложение не может читать и менять настройки гарнитуры.</string>
+    <string name="status_denied_action">Повторить</string>
+    <string name="status_disconnected_title">Отключено</string>
+    <string name="status_disconnected_body">Гарнитура отключена или перестала отвечать. Подключите её снова.</string>
+
+    <!-- Errors -->
+    <string name="error_verify_failed">Гарнитура не подтвердила изменение. Показано то, что в ней на самом деле.</string>
+    <string name="error_disconnected">Гарнитура отключена.</string>
+    <string name="error_timeout">Гарнитура не отвечает.</string>
+    <string name="error_unstable_filter">Полоса %1$d: с такими значениями фильтр неустойчив, они не отправлены.</string>
+    <string name="error_preset_storage">Хранилище пользовательских пресетов повреждено. Ничего не перезаписано.</string>
+    <string name="action_dismiss">Закрыть</string>
+    <string name="action_cancel">Отмена</string>
+
+    <!-- Presets -->
+    <string name="preset_default">По умолчанию</string>
+    <string name="preset_custom1">Свой 1</string>
+    <string name="preset_cs2">CS2</string>
+    <string name="preset_rnb">R&amp;B</string>
+    <string name="preset_valorant">Valorant</string>
+    <string name="preset_hiphop">Хип-хоп</string>
+    <string name="preset_rock">Рок</string>
+    <string name="preset_delta">Delta</string>
+    <string name="preset_apex">APEX</string>
+    <string name="preset_custom_curve">Свой</string>
+    <string name="preset_label">Пресет</string>
+
+    <!-- Sound screen -->
+    <string name="eq_title">Эквалайзер</string>
+    <string name="band_title">Полоса %1$d</string>
+    <string name="band_type">Тип</string>
+    <string name="band_frequency">Частота</string>
+    <string name="band_gain">Усиление</string>
+    <string name="band_q">Q</string>
+    <string name="band_type_off">Выкл</string>
+    <string name="band_type_low_shelf">Низкая полка</string>
+    <string name="band_type_peak">Пик</string>
+    <string name="band_type_high_shelf">Высокая полка</string>
+    <string name="band_type_low_pass">ФНЧ</string>
+    <string name="band_type_high_pass">ФВЧ</string>
+    <string name="unit_hz">%1$s Гц</string>
+    <string name="unit_db">%1$s дБ</string>
+
+    <!-- Mic screen -->
+    <string name="mic_noise_cancelling">ИИ-шумоподавление</string>
+    <string name="mic_gain_offset">Смещение усиления микрофона</string>
+
+    <!-- Device screen -->
+    <string name="device_model">Модель</string>
+    <string name="device_model_value">ATK Horizon</string>
+    <string name="device_vid_pid">VID/PID</string>
+    <string name="device_firmware">Прошивка</string>
+    <string name="device_playback_gain_offset">Смещение громкости воспроизведения</string>
+    <string name="device_reset">Сбросить настройки</string>
+    <string name="reset_confirm_title">Сбросить настройки?</string>
+    <string name="reset_confirm_message">Эквалайзер вернётся к пресету «По умолчанию», а смещения громкости воспроизведения и усиления микрофона — к 0 дБ. Пресеты, сохранённые на телефоне, останутся.</string>
+    <string name="reset_confirm_action">Сбросить</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_subtitle">Приложение</string>
+    <string name="theme_title">Тема</string>
+    <string name="theme_auto">Авто</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+    <string name="theme_auto_hint">«Авто» следует системной теме Android</string>
+    <string name="settings_source_code">Исходный код</string>
+    <string name="settings_github">GitHub</string>
+    <string name="settings_version">Версия</string>
+</resources>

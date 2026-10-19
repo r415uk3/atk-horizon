@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">ATK Horizon</string>
+    <string name="app_title">Horizon</string>
+
+    <!-- Navigation -->
+    <string name="tab_sound">Sound</string>
+    <string name="tab_mic">Microphone</string>
+    <string name="tab_device">Device</string>
+    <string name="settings_open">Settings</string>
+    <string name="settings_close">Close</string>
+
+    <!-- Connection -->
+    <string name="status_connected">Connected · USB-C</string>
+    <string name="status_loading">Reading the headset…</string>
+    <string name="status_no_device_title">Connect ATK Horizon</string>
+    <string name="status_no_device_body">Plug the headset into the phone\'s USB-C port.</string>
+    <string name="status_unsupported_title">Unsupported device (PID %1$s)</string>
+    <string name="status_unsupported_body">This ATK device is not supported. Only ATK Horizon (PID 120C) works with this app.</string>
+    <string name="status_needs_permission_title">Allow USB access</string>
+    <string name="status_needs_permission_body">Android needs your permission before the app can talk to the headset.</string>
+    <string name="status_needs_permission_action">Allow access</string>
+    <string name="status_denied_title">Permission denied</string>
+    <string name="status_denied_body">Without USB access the app can\'t read or change the headset settings.</string>
+    <string name="status_denied_action">Try again</string>
+    <string name="status_disconnected_title">Disconnected</string>
+    <string name="status_disconnected_body">The headset was unplugged or stopped responding. Plug it in again.</string>
+
+    <!-- Errors -->
+    <string name="error_verify_failed">The headset didn\'t confirm the change. Showing what it actually holds.</string>
+    <string name="error_disconnected">The headset was disconnected.</string>
+    <string name="error_timeout">No response from the headset.</string>
+    <string name="error_unstable_filter">Band %1$d: these values make an unstable filter, so they were not sent.</string>
+    <string name="error_preset_storage">Custom presets storage is damaged. Nothing was overwritten.</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- Presets -->
+    <string name="preset_default">Default</string>
+    <string name="preset_custom1">Custom1</string>
+    <string name="preset_cs2">CS2</string>
+    <string name="preset_rnb">R&amp;B</string>
+    <string name="preset_valorant">Valorant</string>
+    <string name="preset_hiphop">Hip-hop</string>
+    <string name="preset_rock">Rock</string>
+    <string name="preset_delta">Delta</string>
+    <string name="preset_apex">APEX</string>
+    <string name="preset_custom_curve">Custom</string>
+    <string name="preset_label">Preset</string>
+
+    <!-- Sound screen -->
+    <string name="eq_title">Equalizer</string>
+    <string name="band_title">Band %1$d</string>
+    <string name="band_type">Type</string>
+    <string name="band_frequency">Frequency</string>
+    <string name="band_gain">Gain</string>
+    <string name="band_q">Q</string>
+    <string name="band_type_off">Off</string>
+    <string name="band_type_low_shelf">Low shelf</string>
+    <string name="band_type_peak">Peak</string>
+    <string name="band_type_high_shelf">High shelf</string>
+    <string name="band_type_low_pass">Low-pass</string>
+    <string name="band_type_high_pass">High-pass</string>
+    <string name="unit_hz">%1$s Hz</string>
+    <string name="unit_db">%1$s dB</string>
+
+    <!-- Mic screen -->
+    <string name="mic_noise_cancelling">AI noise cancelling</string>
+    <string name="mic_gain_offset">Mic gain offset</string>
+
+    <!-- Device screen -->
+    <string name="device_model">Model</string>
+    <string name="device_model_value">ATK Horizon</string>
+    <string name="device_vid_pid">VID/PID</string>
+    <string name="device_firmware">Firmware</string>
+    <string name="device_playback_gain_offset">Playback gain offset</string>
+    <string name="device_reset">Reset settings</string>
+    <string name="reset_confirm_title">Reset settings?</string>
+    <string name="reset_confirm_message">The equalizer goes back to the Default preset and the playback and mic gain offsets go back to 0 dB. Presets saved on this phone are kept.</string>
+    <string name="reset_confirm_action">Reset</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_subtitle">App</string>
+    <string name="theme_title">Theme</string>
+    <string name="theme_auto">Auto</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_auto_hint">Auto follows the Android system theme</string>
+    <string name="settings_source_code">Source code</string>
+    <string name="settings_github">GitHub</string>
+    <string name="settings_version">Version</string>
+</resources>

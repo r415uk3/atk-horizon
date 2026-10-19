@@ -114,9 +114,10 @@ class HorizonViewModel(
         endSession()
         val conn = when (u) {
             UsbState.NoDevice -> if (hadConnection) ConnState.Disconnected else ConnState.NoDevice
-            is UsbState.Unsupported -> ConnState.Unsupported
+            is UsbState.Unsupported -> ConnState.Unsupported(u.pid)
             UsbState.NeedsPermission -> ConnState.NeedsPermission
             UsbState.PermissionDenied -> ConnState.PermissionDenied
+            UsbState.Connecting -> ConnState.Loading
             is UsbState.Connected -> error("unreachable")
         }
         _state.update { it.copy(conn = conn) }

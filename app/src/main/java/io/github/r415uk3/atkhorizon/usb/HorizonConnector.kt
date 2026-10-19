@@ -15,10 +15,14 @@ import io.github.r415uk3.atkhorizon.protocol.HidTransport
 import io.github.r415uk3.atkhorizon.protocol.HorizonDevice
 import io.github.r415uk3.atkhorizon.protocol.HorizonLink
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface UsbState {
     data object NoDevice : UsbState
@@ -26,6 +30,8 @@ sealed interface UsbState {
     data class Unsupported(val pid: Int) : UsbState
     data object NeedsPermission : UsbState
     data object PermissionDenied : UsbState
+    /** A permitted Horizon is being opened (off the main thread). */
+    data object Connecting : UsbState
     data class Connected(val device: HorizonDevice) : UsbState
 }
 
@@ -36,7 +42,10 @@ sealed interface UsbState {
  * HID interface is claimed (`claimInterface(iface, true)`) and the state becomes [UsbState.Connected].
  * [release] releases the interface, closes the connection and stops reconnecting; while released
  * the state reports [UsbState.NoDevice] for a permitted Horizon (the app is in the background).
- * All public methods must be called on the main thread (the receiver also runs there).
+ * All public methods must be called on the main thread (the receiver also runs there), and [scope]
+ * must dispatch on the main thread. Blocking USB work (openDevice, descriptor reads, claim/release,
+ * close) runs on one serialized IO lane, so a teardown always finishes before the next open; all
+ * fields are touched on the main thread only.
  */
 class HorizonConnector(context: Context, private val scope: CoroutineScope) {
     private val app = context.applicationContext
@@ -50,13 +59,24 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
     private var denied = false
     private var session: Session? = null
 
-    private class Session(
+    /** Serialized lane for blocking USB calls. */
+    private val usbIo = Dispatchers.IO.limitedParallelism(1)
+    /** Device name being opened on [usbIo]; null when no open is in flight. */
+    private var connecting: String? = null
+    /** Bumped to abandon an in-flight open (its result is then closed instead of used). */
+    private var generation = 0
+
+    /** An opened and claimed HID interface, before the protocol objects are built. */
+    private class Opened(
         val device: UsbDevice,
         val conn: UsbDeviceConnection,
         val iface: UsbInterface,
         val transport: HidTransport,
-        val horizon: HorizonDevice,
     )
+
+    private class Session(val opened: Opened, val horizon: HorizonDevice) {
+        val device get() = opened.device
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
@@ -121,6 +141,7 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
         val devices = usb.deviceList.values
         val horizon = devices.firstOrNull { UsbIds.classify(it.vendorId, it.productId) == DeviceKind.Horizon }
         if (horizon == null) {
+            abandonConnect()
             teardown()
             val other = devices.firstNotNullOfOrNull { UsbIds.classify(it.vendorId, it.productId) as? DeviceKind.OtherAtk }
             _state.value = other?.let { UsbState.Unsupported(it.pid) } ?: UsbState.NoDevice
@@ -130,14 +151,50 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
             if (s.device.deviceName == horizon.deviceName) { _state.value = UsbState.Connected(s.horizon); return }
             teardown()
         }
-        _state.value = when {
-            !usb.hasPermission(horizon) -> if (denied) UsbState.PermissionDenied else UsbState.NeedsPermission
-            !wanted -> UsbState.NoDevice
-            else -> connect(horizon)?.let { UsbState.Connected(it.horizon) } ?: UsbState.NoDevice
+        if (!usb.hasPermission(horizon) || !wanted) {
+            abandonConnect()
+            _state.value = when {
+                !usb.hasPermission(horizon) -> if (denied) UsbState.PermissionDenied else UsbState.NeedsPermission
+                else -> UsbState.NoDevice
+            }
+            return
+        }
+        if (connecting == horizon.deviceName) return
+        startConnect(horizon)
+    }
+
+    private fun abandonConnect() {
+        if (connecting == null) return
+        connecting = null
+        generation++
+    }
+
+    private fun startConnect(device: UsbDevice) {
+        abandonConnect()
+        val gen = generation
+        connecting = device.deviceName
+        _state.value = UsbState.Connecting
+        // Not cancelled on abandon (the blocking open can't be interrupted); the generation check
+        // decides whether the result is used or closed.
+        scope.launch {
+            val opened = withContext(usbIo) { connect(device) }
+            if (gen != generation) {
+                opened?.let { o -> scope.launch(usbIo + NonCancellable) { close(o) } }
+                return@launch
+            }
+            connecting = null
+            if (opened == null) {
+                // Leaves Connecting; the next attach/permission/open event retries.
+                _state.value = UsbState.NoDevice
+                return@launch
+            }
+            session = Session(opened, HorizonDevice(HorizonLink(opened.transport, scope)))
+            refresh()
         }
     }
 
-    private fun connect(device: UsbDevice): Session? {
+    /** Blocking; runs on [usbIo]. */
+    private fun connect(device: UsbDevice): Opened? {
         Log.d(TAG, "opening ${describe(device)}")
         val conn = usb.openDevice(device) ?: run { Log.e(TAG, "openDevice returned null"); return null }
         val ifaces = (0 until device.interfaceCount).map(device::getInterface)
@@ -181,7 +238,7 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
             conn.close()
             return null
         }
-        return Session(device, conn, iface, transport, HorizonDevice(HorizonLink(transport, scope))).also { session = it }
+        return Opened(device, conn, iface, transport)
     }
 
     private fun readReportDescriptor(conn: UsbDeviceConnection, iface: UsbInterface): ByteArray? {
@@ -191,13 +248,22 @@ class HorizonConnector(context: Context, private val scope: CoroutineScope) {
         return if (n > 0) buf.copyOf(n) else null.also { Log.d(TAG, "iface ${iface.id}: report descriptor read failed ($n)") }
     }
 
+    /**
+     * Drops the session now and closes it on [usbIo]. NonCancellable: the close runs even when
+     * [scope] is already cancelled (app scope shutdown).
+     */
     private fun teardown() {
         val s = session ?: return
         session = null
-        Log.d(TAG, "releasing interface ${s.iface.id}")
-        s.transport.close()
-        s.conn.releaseInterface(s.iface)
-        s.conn.close()
+        scope.launch(usbIo + NonCancellable) { close(s.opened) }
+    }
+
+    /** Blocking; runs on [usbIo]. */
+    private fun close(o: Opened) {
+        Log.d(TAG, "releasing interface ${o.iface.id}")
+        o.transport.close()
+        o.conn.releaseInterface(o.iface)
+        o.conn.close()
     }
 
     private fun describe(d: UsbDevice) =

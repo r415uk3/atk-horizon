@@ -1,0 +1,38 @@
+package io.github.r415uk3.atkhorizon.ui
+
+import io.github.r415uk3.atkhorizon.R
+import io.github.r415uk3.atkhorizon.ui.screens.statusContent
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class ShellMappingTest {
+    @Test
+    fun everyErrorHasItsOwnMessage() {
+        val errors = listOf(
+            UiError.VerifyFailed(listOf(1)), UiError.Disconnected, UiError.Timeout,
+            UiError.UnstableFilter(2), UiError.PresetStorage,
+        )
+        val ids = errors.map { errorMessage(it).first }
+        assertEquals(errors.size, ids.toSet().size)
+        assertEquals(R.string.error_preset_storage to null, errorMessage(UiError.PresetStorage))
+        // Band numbers are shown 1-based.
+        assertEquals(R.string.error_unstable_filter to 3, errorMessage(UiError.UnstableFilter(2)))
+    }
+
+    @Test
+    fun statusScreensForEveryNonReadyState() {
+        assertNull(statusContent(ConnState.Ready))
+        assertNull(statusContent(ConnState.Loading))
+        listOf(ConnState.NoDevice, ConnState.NeedsPermission, ConnState.PermissionDenied, ConnState.Disconnected)
+            .forEach { assertNotNull(it.toString(), statusContent(it)) }
+        val unsupported = statusContent(ConnState.Unsupported(0x129F))!!
+        assertEquals(R.string.status_unsupported_title, unsupported.title)
+        assertEquals("129F", unsupported.titleArg)
+        // Permission states offer a button; the rest need a physical action.
+        assertNotNull(statusContent(ConnState.NeedsPermission)!!.action)
+        assertNotNull(statusContent(ConnState.PermissionDenied)!!.action)
+        assertNull(statusContent(ConnState.NoDevice)!!.action)
+    }
+}
