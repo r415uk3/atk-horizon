@@ -716,4 +716,37 @@ class HorizonViewModelTest {
         assertEquals(EqBand(FilterType.Peak, 20, 0.1, 1.0), saved.bands[2])
         assertEquals(8, saved.bands.size)
     }
+
+    @Test
+    fun presetStorageWriteFailureSurfacesErrorWithoutCrashing() = runTest {
+        val r = Rig(this)
+        val failing = object : io.github.r415uk3.atkhorizon.data.PresetStore by r.presets {
+            override suspend fun create(name: String, bands: List<EqBand>) = throw java.io.IOException("disk full")
+            override suspend fun rename(id: String, name: String) = throw java.io.IOException("disk full")
+            override suspend fun delete(id: String) = throw java.io.IOException("disk full")
+        }
+        val vm = HorizonViewModel(r.usb, failing, r.settings, {}, r.vmScope)
+        runCurrent()
+        for (action in listOf<() -> Unit>({ vm.saveAsPreset("x") }, { vm.renamePreset("custom-1", "y") }, { vm.deletePreset("custom-1") })) {
+            vm.dismissError()
+            action()
+            runCurrent()
+            assertEquals(UiError.PresetStorage, vm.state.value.error)
+        }
+        assertTrue(r.vmScope.coroutineContext.job.isActive)
+    }
+
+    @Test
+    fun themeWriteFailureIsIgnoredWithoutCrashing() = runTest {
+        val r = Rig(this)
+        val failing = object : io.github.r415uk3.atkhorizon.data.SettingsStore by r.settings {
+            override suspend fun setThemeMode(m: io.github.r415uk3.atkhorizon.data.ThemeMode) = throw java.io.IOException("disk full")
+        }
+        val vm = HorizonViewModel(r.usb, r.presets, failing, {}, r.vmScope)
+        runCurrent()
+        vm.setThemeMode(io.github.r415uk3.atkhorizon.data.ThemeMode.Dark)
+        runCurrent()
+        assertEquals(io.github.r415uk3.atkhorizon.data.ThemeMode.Auto, vm.state.value.themeMode)
+        assertTrue(r.vmScope.coroutineContext.job.isActive)
+    }
 }

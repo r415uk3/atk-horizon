@@ -1,5 +1,6 @@
 package io.github.r415uk3.atkhorizon.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.r415uk3.atkhorizon.data.CorruptPresetsException
@@ -20,6 +21,7 @@ import io.github.r415uk3.atkhorizon.protocol.plausibleOffset
 import io.github.r415uk3.atkhorizon.protocol.UnstableFilterException
 import io.github.r415uk3.atkhorizon.protocol.VerifyException
 import io.github.r415uk3.atkhorizon.usb.UsbState
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -489,10 +491,14 @@ class HorizonViewModel(
         scope.launch { storage { presetStore.delete(id) } }
     }
 
+    /** A damaged store or a failed DataStore write (IOException) is an error, never a crash. */
     private suspend fun storage(block: suspend () -> Unit) {
         try {
             block()
         } catch (_: CorruptPresetsException) {
+            setError(UiError.PresetStorage)
+        } catch (e: IOException) {
+            logWarning("preset storage write failed", e)
             setError(UiError.PresetStorage)
         }
     }
@@ -564,8 +570,15 @@ class HorizonViewModel(
 
     // ---- Misc ----
 
+    /** A failed write (IOException) is logged and ignored: the theme simply stays as it was. */
     fun setThemeMode(m: ThemeMode) {
-        scope.launch { settings.setThemeMode(m) }
+        scope.launch {
+            try {
+                settings.setThemeMode(m)
+            } catch (e: IOException) {
+                logWarning("theme write failed", e)
+            }
+        }
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -578,4 +591,9 @@ class HorizonViewModel(
         const val LIVE_THROTTLE_MS = 60L
         const val COMMIT_DEBOUNCE_MS = 500L
     }
+}
+
+/** android.util.Log is a throwing stub in JVM unit tests; logging must never turn into a failure. */
+private fun logWarning(msg: String, e: Throwable) {
+    runCatching { Log.w("Horizon", msg, e) }
 }
