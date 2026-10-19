@@ -1,5 +1,6 @@
 package io.github.r415uk3.atkhorizon.ui.glass
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -12,7 +13,8 @@ class MenuPlacementTest {
     private val window = IntSize(1000, 2000)
     private val menu = IntSize(400, 300)
 
-    private fun place(anchor: IntRect, menu: IntSize = this.menu) = placeMenu(anchor, menu, window, margin = 40, gap = 10)
+    private fun place(anchor: IntRect, menu: IntSize = this.menu, rtl: Boolean = false) =
+        placeMenu(anchor, menu, window, margin = 40, gap = 10, rtl = rtl)
 
     @Test fun opensBelowLeftAligned() {
         val p = place(IntRect(100, 200, 300, 280))
@@ -48,5 +50,29 @@ class MenuPlacementTest {
     @Test fun menuLargerThanWindowSticksToMargins() {
         val p = place(IntRect(100, 100, 200, 150), IntSize(2000, 3000))
         assertEquals(IntOffset(40, 40), p.offset)
+    }
+
+    @Test fun zeroSizeAnchorStillPlacesInsideMargins() {
+        val p = place(IntRect(0, 0, 0, 0))
+        assertEquals(IntOffset(40, 40), p.offset)
+        assertFalse(p.above)
+    }
+
+    @Test fun zeroSizeOrHiddenAnchorCannotAnchor() {
+        val pill = Rect(100f, 200f, 300f, 280f)
+        assertTrue(canAnchor(pill, pill))
+        assertTrue(canAnchor(pill, Rect(250f, 200f, 300f, 280f)))
+        assertFalse(canAnchor(Rect(0f, 0f, 0f, 0f), Rect(0f, 0f, 0f, 0f)))
+        assertFalse(canAnchor(pill, Rect.Zero))
+    }
+
+    @Test fun rtlAlignsToAnchorEnd() {
+        val p = place(IntRect(500, 200, 700, 280), rtl = true)
+        assertEquals(700 - 400, p.offset.x)
+    }
+
+    @Test fun pivotFollowsAnchorCentre() {
+        assertEquals(0.25f, place(IntRect(100, 200, 300, 280)).pivotX, 0.001f)
+        assertEquals(0.75f, place(IntRect(500, 200, 700, 280), rtl = true).pivotX, 0.001f)
     }
 }

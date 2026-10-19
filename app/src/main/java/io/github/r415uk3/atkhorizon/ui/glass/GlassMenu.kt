@@ -28,6 +28,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -51,6 +52,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -58,15 +61,19 @@ import com.kyant.shapes.RoundedRectangle
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import kotlin.math.roundToInt
 
-/** Where a menu goes: its top-left corner and whether it opens above the anchor. */
-internal data class MenuPlacement(val offset: IntOffset, val above: Boolean)
+/**
+ * Where a menu goes: its top-left corner, whether it opens above the anchor, and the horizontal
+ * pivot for its appear animation (0…1 across the menu, under the anchor's centre).
+ */
+internal data class MenuPlacement(val offset: IntOffset, val above: Boolean, val pivotX: Float)
 
 /**
  * Places a [menu] next to [anchor] inside [bounds] (all in the same coordinates, px): below the
- * anchor, left edges aligned, [gap] apart; above it when it does not fit below but fits above (or
- * there is more room above); always clamped [margin] inside [bounds].
+ * anchor, [gap] apart, aligned to its start edge (left, or right when [rtl]); above it when it
+ * does not fit below but fits above (or there is more room above); always clamped [margin]
+ * inside [bounds].
  */
-internal fun placeMenu(anchor: IntRect, menu: IntSize, bounds: IntSize, margin: Int, gap: Int): MenuPlacement {
+internal fun placeMenu(anchor: IntRect, menu: IntSize, bounds: IntSize, margin: Int, gap: Int, rtl: Boolean = false): MenuPlacement {
     val minX = margin
     val maxX = (bounds.width - margin - menu.width).coerceAtLeast(minX)
     val minY = margin
@@ -79,31 +86,72 @@ internal fun placeMenu(anchor: IntRect, menu: IntSize, bounds: IntSize, margin: 
     val roomAbove = anchor.top - gap - margin
     val goAbove = !fitsBelow && (fitsAbove || roomAbove > roomBelow)
     val y = (if (goAbove) above else below).coerceIn(minY, maxY)
-    val x = anchor.left.coerceIn(minX, maxX)
-    return MenuPlacement(IntOffset(x, y), goAbove)
+    val x = (if (rtl) anchor.right - menu.width else anchor.left).coerceIn(minX, maxX)
+    val pivotX = if (menu.width > 0) ((anchor.left + anchor.right) / 2f - x) / menu.width else 0.5f
+    return MenuPlacement(IntOffset(x, y), goAbove, pivotX.coerceIn(0f, 1f))
 }
 
-/** Closes the menu that shows these items. */
-private val LocalMenuDismiss = staticCompositionLocalOf<() -> Unit> { {} }
+/**
+ * Whether a menu can be anchored to [anchor] (its unclipped window rect) when only [visible] of
+ * it is on screen: it has a size and is at least partly visible.
+ */
+internal fun canAnchor(anchor: Rect, visible: Rect): Boolean =
+    anchor.width > 0f && anchor.height > 0f && visible.width > 0f && visible.height > 0f
+
+/** Runs at most one item of an open menu, and only while the menu is still [active]. */
+private class MenuItemGuard(var dismiss: () -> Unit, var active: () -> Boolean) {
+    private var fired = false
+
+    fun fire(action: () -> Unit) {
+        if (fired || !active()) return
+        fired = true
+        dismiss()
+        action()
+    }
+}
+
+/** The open menu's item guard. */
+private val LocalMenuItemGuard = staticCompositionLocalOf<MenuItemGuard?> { null }
 
 /**
  * A liquid-glass context menu for the box's content (its anchor, e.g. a pill): a drop-in for
  * Material's DropdownMenu that is drawn inside the app window by [GlassDialogLayer], so the glass
  * refracts the screen behind it. While open, the page is inert and focus is inside the menu;
- * tapping outside, Back or an item closes it. Fill it with [GlassMenuItem]s. Needs a
- * [GlassDialogHost] ([LocalGlassDialogHost]); without one nothing is shown.
+ * tapping outside, Back or an item closes it; one item runs at most once per opening, and none
+ * while [enabled] is false. If the anchor is scrolled out of view the menu closes. Fill it with
+ * [GlassMenuItem]s. Needs a [GlassDialogHost] ([LocalGlassDialogHost]); without one nothing is shown.
  */
 @Composable
-fun BoxScope.GlassMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun BoxScope.GlassMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     var anchor by remember { mutableStateOf<Rect?>(null) }
-    Spacer(Modifier.matchParentSize().onGloballyPositioned { anchor = it.boundsInWindow() })
+    Spacer(
+        Modifier.matchParentSize().onGloballyPositioned {
+            // Unclipped rect for placement; the clipped one only tells whether it is on screen.
+            val rect = Rect(it.positionInWindow(), it.size.toSize())
+            anchor = rect.takeIf { r -> canAnchor(r, it.boundsInWindow()) }
+        },
+    )
     val host = LocalGlassDialogHost.current ?: return
+    if (!expanded) return
     val at = anchor
-    if (!expanded || at == null) return
-    val entry = remember { GlassDialogHost.Entry(onDismissRequest, content, at) }
+    val dismiss by rememberUpdatedState(onDismissRequest)
+    val active by rememberUpdatedState(enabled && at != null)
+    // Anchor gone (scrolled out, zero size): close instead of showing the menu at a wrong place.
+    LaunchedEffect(at == null) { if (at == null) dismiss() }
+    if (at == null || !enabled) return
+    val guard = remember { MenuItemGuard({ dismiss() }, { active }) }
+    val guarded: @Composable ColumnScope.() -> Unit = {
+        CompositionLocalProvider(LocalMenuItemGuard provides guard) { content() }
+    }
+    val entry = remember { GlassDialogHost.Entry(onDismissRequest, guarded, at) }
     SideEffect {
         entry.onDismiss = onDismissRequest
-        entry.content = content
+        entry.content = guarded
         entry.anchor = at
     }
     DisposableEffect(host, entry) {
@@ -114,12 +162,13 @@ fun BoxScope.GlassMenu(expanded: Boolean, onDismissRequest: () -> Unit, content:
 
 /** The open menu's card, placed next to [anchor] (window coordinates). */
 @Composable
-internal fun GlassMenuLayer(anchor: Rect, cardModifier: Modifier, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun GlassMenuLayer(anchor: Rect, cardModifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
     val c = LocalHorizonColors.current
     val density = LocalDensity.current
     val margin = with(density) { MenuMargin.roundToPx() }
     val gap = with(density) { MenuGap.roundToPx() }
     var above by remember { mutableStateOf(false) }
+    var pivotX by remember { mutableStateOf(0.5f) }
     // Same appear motion as the Liquid controls: a quick spring from slightly small and clear.
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 600f)) }
@@ -135,7 +184,7 @@ internal fun GlassMenuLayer(anchor: Rect, cardModifier: Modifier, onDismiss: () 
                         alpha = p.coerceIn(0f, 1f)
                         scaleX = lerp(0.85f, 1f, p)
                         scaleY = lerp(0.85f, 1f, p)
-                        transformOrigin = TransformOrigin(0.15f, if (above) 1f else 0f)
+                        transformOrigin = TransformOrigin(pivotX, if (above) 1f else 0f)
                     }
                     .semantics { isTraversalGroup = true }
                     // Swallow taps so they do not reach the outside-tap catcher.
@@ -146,12 +195,10 @@ internal fun GlassMenuLayer(anchor: Rect, cardModifier: Modifier, onDismiss: () 
                 refractionHeight = 20.dp,
                 refractionAmount = 40.dp,
             ) {
-                CompositionLocalProvider(LocalMenuDismiss provides onDismiss) {
-                    Column(
-                        Modifier.width(IntrinsicSize.Max).widthIn(min = 180.dp, max = 280.dp).padding(vertical = 6.dp),
-                        content = content,
-                    )
-                }
+                Column(
+                    Modifier.widthIn(min = 180.dp, max = 280.dp).width(IntrinsicSize.Max).padding(vertical = 6.dp),
+                    content = content,
+                )
             }
         },
     ) { measurables, constraints ->
@@ -168,18 +215,20 @@ internal fun GlassMenuLayer(anchor: Rect, cardModifier: Modifier, onDismiss: () 
                 right = (anchor.right - origin.x).roundToInt(),
                 bottom = (anchor.bottom - origin.y).roundToInt(),
             )
-            val placement = placeMenu(local, IntSize(card.width, card.height), bounds, margin, gap)
+            val rtl = layoutDirection == LayoutDirection.Rtl
+            val placement = placeMenu(local, IntSize(card.width, card.height), bounds, margin, gap, rtl)
             above = placement.above
+            pivotX = placement.pivotX
             card.place(placement.offset)
         }
     }
 }
 
-/** A menu row: tapping it closes the menu, then runs [onClick]. */
+/** A menu row: tapping it closes the menu, then runs [onClick] (once, see [GlassMenu]). */
 @Composable
 fun GlassMenuItem(text: String, onClick: () -> Unit) {
     val c = LocalHorizonColors.current
-    val dismiss = LocalMenuDismiss.current
+    val guard = LocalMenuItemGuard.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scope = rememberCoroutineScope()
@@ -191,8 +240,7 @@ fun GlassMenuItem(text: String, onClick: () -> Unit) {
             .drawBehind { if (pressed) drawRect(c.ink.copy(alpha = 0.08f)) }
             .then(highlight.modifier)
             .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
-                dismiss()
-                onClick()
+                if (guard != null) guard.fire(onClick) else onClick()
             }
             .then(highlight.gestureModifier)
             .padding(horizontal = 18.dp, vertical = 12.dp),

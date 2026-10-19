@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -90,6 +91,8 @@ fun PresetPills(
         presets.forEach { p ->
             key(p.id) {
                 var menu by remember { mutableStateOf(false) }
+                // A menu closed by a disconnect stays closed on reconnect.
+                LaunchedEffect(enabled) { if (!enabled) menu = false }
                 Box {
                     Pill(
                         presetLabel(p),
@@ -98,7 +101,7 @@ fun PresetPills(
                         onClick = { onSelect(p.id) },
                         onLongClick = if (p.builtIn) null else ({ menu = true }),
                     )
-                    GlassMenu(expanded = menu && enabled, onDismissRequest = { menu = false }) {
+                    GlassMenu(expanded = menu && enabled, onDismissRequest = { menu = false }, enabled = enabled) {
                         GlassMenuItem(stringResource(R.string.preset_rename), onClick = { menu = false; renaming = p.id })
                         GlassMenuItem(stringResource(R.string.preset_delete), onClick = { menu = false; deleting = p.id })
                     }
@@ -106,12 +109,13 @@ fun PresetPills(
             }
         }
         var addMenu by remember { mutableStateOf(false) }
+        LaunchedEffect(enabled) { if (!enabled) addMenu = false }
         Box {
             Pill(
                 "+", on = false, enabled = enabled, onClick = { addMenu = true },
                 modifier = Modifier.semantics { contentDescription = addLabel },
             )
-            GlassMenu(expanded = addMenu && enabled, onDismissRequest = { addMenu = false }) {
+            GlassMenu(expanded = addMenu && enabled, onDismissRequest = { addMenu = false }, enabled = enabled) {
                 GlassMenuItem(stringResource(R.string.preset_save_as), onClick = { addMenu = false; saving = true })
                 GlassMenuItem(stringResource(R.string.preset_import), onClick = { addMenu = false; onImport() })
             }

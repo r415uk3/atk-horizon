@@ -94,7 +94,7 @@ fun GlassDialogLayer(host: GlassDialogHost) {
         val anchor = top.anchor
         if (anchor != null) {
             Box(Modifier.fillMaxSize().then(dismissTop))
-            GlassMenuLayer(anchor, Modifier.trapFocus(focus), onDismiss = { top.onDismiss() }, content = top.content)
+            GlassMenuLayer(anchor, Modifier.trapFocus(focus), content = top.content)
         } else {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
                 DialogCard(Modifier.padding(horizontal = 28.dp).trapFocus(focus), top.content)
