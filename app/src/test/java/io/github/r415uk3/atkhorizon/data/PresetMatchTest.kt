@@ -58,4 +58,15 @@ class PresetMatchTest {
         assertEquals("cs2", matchPreset(fromDevice(cs2().bands), listOf(cs2(), dup))?.id)
         assertEquals("custom-x", matchPreset(fromDevice(cs2().bands), listOf(dup, cs2()))?.id)
     }
+
+    @Test
+    fun deviceBandWithUnknownTypeOrZeroFcMatchesNothingWithoutThrowing() {
+        val raw = cs2().bands.mapIndexed { i, b -> Packets.writeBand(i, b) }
+        val unknownType = raw.map { it.copyOf() }.also { it[2][33] = 7 }.map { Responses.band(it) }
+        assertEquals(FilterType.Off, unknownType[2].band.type)
+        assertNull(matchPreset(unknownType, BuiltInPresets.all))
+        val zeroFc = raw.map { it.copyOf() }.also { it[4][27] = 0; it[4][28] = 0 }.map { Responses.band(it) }
+        assertEquals(0, zeroFc[4].band.fc)
+        assertNull(matchPreset(zeroFc, BuiltInPresets.all))
+    }
 }

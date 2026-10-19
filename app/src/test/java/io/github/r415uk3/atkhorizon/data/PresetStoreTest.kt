@@ -55,4 +55,28 @@ class PresetStoreTest {
         s.setThemeMode(ThemeMode.Dark)
         assertEquals(ThemeMode.Dark, s.themeMode.first())
     }
+
+    @Test
+    fun writesAfterGarbageThrowAndLeaveRawUntouched() {
+        val garbage = "{corrupt"
+        val p = Preset("custom-1", "A", bands, false)
+        listOf<(List<Preset>) -> List<Preset>>({ it + p }, { l -> l.map { it.copy(name = "x") } }, { l -> l.filterNot { it.id == "custom-1" } })
+            .forEach { f ->
+                try {
+                    PresetJson.update(garbage, f)
+                    org.junit.Assert.fail("expected CorruptPresetsException")
+                } catch (_: CorruptPresetsException) {
+                }
+            }
+        // reads still degrade to empty
+        assertEquals(emptyList<Preset>(), PresetJson.decode(garbage))
+    }
+
+    @Test
+    fun updateOfMissingOrValidRawWorks() {
+        val p = Preset("custom-1", "A", bands, false)
+        val raw = PresetJson.update(null, { it + p })
+        assertEquals(listOf(p), PresetJson.decode(raw))
+        assertEquals(emptyList<Preset>(), PresetJson.decode(PresetJson.update(raw, { l -> l.filterNot { it.id == "custom-1" } })))
+    }
 }

@@ -43,8 +43,8 @@ internal object PresetJson {
         },
     )
 
-    /** Corrupt or missing data yields an empty list rather than a crash. */
-    fun decode(text: String?): List<Preset> {
+    /** Missing data is an empty list; undecodable data is null (never confuse it with "no presets"). */
+    fun decodeOrNull(text: String?): List<Preset>? {
         if (text.isNullOrEmpty()) return emptyList()
         return try {
             json.decodeFromString(serializer, text).map { d ->
@@ -55,16 +55,30 @@ internal object PresetJson {
                 )
             }
         } catch (_: Exception) {
-            emptyList()
+            null
         }
     }
+
+    /** Read path: corrupt data degrades to no custom presets. */
+    fun decode(text: String?): List<Preset> = decodeOrNull(text) ?: emptyList()
+
+    /**
+     * Write path: returns the new raw string, or throws [CorruptPresetsException] without
+     * producing anything when [raw] is non-empty but undecodable, so stored data is never overwritten.
+     */
+    fun update(raw: String?, f: (List<Preset>) -> List<Preset>): String {
+        val current = decodeOrNull(raw) ?: throw CorruptPresetsException()
+        return encode(f(current))
+    }
 }
+
+class CorruptPresetsException : IllegalStateException("Stored custom presets are unreadable; refusing to overwrite them")
 
 class PresetRepository(private val dataStore: DataStore<Preferences>) : PresetStore {
     private val key = stringPreferencesKey("custom_presets")
 
     override val presets: Flow<List<Preset>> =
-        dataStore.data.map { BuiltInPresets.all + PresetJson.decode(it[key]) }
+        dataStore.data.safe().map { BuiltInPresets.all + PresetJson.decode(it[key]) }
 
     override suspend fun create(name: String, bands: List<EqBand>): Preset {
         val p = Preset("custom-" + UUID.randomUUID(), name, bands, builtIn = false)
@@ -78,6 +92,6 @@ class PresetRepository(private val dataStore: DataStore<Preferences>) : PresetSt
     override suspend fun delete(id: String) = update { list -> list.filterNot { it.id == id } }
 
     private suspend fun update(f: (List<Preset>) -> List<Preset>) {
-        dataStore.edit { prefs -> prefs[key] = PresetJson.encode(f(PresetJson.decode(prefs[key]))) }
+        dataStore.edit { prefs -> prefs[key] = PresetJson.update(prefs[key], f) }
     }
 }
