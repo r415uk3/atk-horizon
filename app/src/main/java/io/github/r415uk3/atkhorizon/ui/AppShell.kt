@@ -57,6 +57,8 @@ import io.github.r415uk3.atkhorizon.ui.glass.BlobBackground
 import io.github.r415uk3.atkhorizon.ui.glass.GlassSurface
 import io.github.r415uk3.atkhorizon.ui.glass.LocalHazeState
 import io.github.r415uk3.atkhorizon.ui.glass.PillShape
+import io.github.r415uk3.atkhorizon.ui.eq.BandSheet
+import io.github.r415uk3.atkhorizon.ui.screens.SoundScreen
 import io.github.r415uk3.atkhorizon.ui.screens.StatusScreen
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 
@@ -84,11 +86,15 @@ fun AppShell(vm: HorizonViewModel) {
     val state by vm.state.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.Sound) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    /** Band whose sheet is open (Sound tab). */
+    var editing by rememberSaveable { mutableStateOf<Int?>(null) }
     val haze = rememberHazeState()
     val hasDevice = state.conn == ConnState.Ready || state.conn == ConnState.Loading
     val showTabs = hasDevice && !settingsOpen
+    val sheetBand = editing?.takeIf { showTabs && tab == Tab.Sound && it in state.bands.indices }
 
     BackHandler(enabled = settingsOpen) { settingsOpen = false }
+    BackHandler(enabled = sheetBand != null) { editing = null }
 
     CompositionLocalProvider(LocalHazeState provides haze) {
         Box(Modifier.fillMaxSize()) {
@@ -120,11 +126,14 @@ fun AppShell(vm: HorizonViewModel) {
                             onAction = if (state.conn == ConnState.Disconnected) vm::retryConnect else vm::retryPermission,
                             modifier = Modifier.navigationBarsPadding().padding(bottom = 16.dp),
                         )
+                        tab == Tab.Sound -> SoundScreen(
+                            state, vm, onEditBand = { editing = it },
+                            modifier = Modifier.padding(bottom = ContentBottomInset),
+                        )
                         else -> PlaceholderScreen(
                             when (tab) {
-                                Tab.Sound -> R.string.eq_title
                                 Tab.Mic -> R.string.mic_noise_cancelling
-                                Tab.Device -> R.string.device_model
+                                else -> R.string.device_model
                             },
                         )
                     }
@@ -139,7 +148,18 @@ fun AppShell(vm: HorizonViewModel) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ErrorSnackbar(state.error, onDismiss = vm::dismissError)
-                if (showTabs) TabBar(tab, onSelect = { tab = it })
+                // The band sheet floats in the tab bar's place; tapping another knob switches band.
+                if (sheetBand != null) {
+                    BandSheet(
+                        index = sheetBand,
+                        band = state.bands[sheetBand],
+                        enabled = state.conn == ConnState.Ready,
+                        onChange = { vm.setBand(sheetBand, it) },
+                        onDismiss = { editing = null },
+                    )
+                } else if (showTabs) {
+                    TabBar(tab, onSelect = { tab = it })
+                }
             }
         }
     }
@@ -171,7 +191,7 @@ private fun Header(settingsOpen: Boolean, subtitle: String?, onToggleSettings: (
     }
 }
 
-/** Stand-in until the real screen lands (Sound: Task 10; Mic, Device, Settings: Task 11). */
+/** Stand-in until the real screen lands (Mic, Device, Settings: Task 11). */
 @Composable
 private fun PlaceholderScreen(title: Int) {
     val c = LocalHorizonColors.current

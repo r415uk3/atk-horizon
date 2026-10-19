@@ -48,6 +48,13 @@
     <string name="preset_apex">APEX</string>
     <string name="preset_custom_curve">Custom</string>
     <string name="preset_label">Preset</string>
+    <string name="preset_save_as">Save as preset…</string>
+    <string name="preset_name">Preset name</string>
+    <string name="preset_rename">Rename</string>
+    <string name="preset_delete">Delete</string>
+    <string name="preset_delete_confirm">Delete preset “%1$s”?</string>
+    <string name="action_save">Save</string>
+    <string name="action_done">Done</string>
 
     <!-- Sound screen -->
     <string name="eq_title">Equalizer</string>

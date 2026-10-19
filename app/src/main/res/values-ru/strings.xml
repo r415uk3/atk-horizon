@@ -47,6 +47,13 @@
     <string name="preset_apex">APEX</string>
     <string name="preset_custom_curve">Свой</string>
     <string name="preset_label">Пресет</string>
+    <string name="preset_save_as">Сохранить как пресет…</string>
+    <string name="preset_name">Название пресета</string>
+    <string name="preset_rename">Переименовать</string>
+    <string name="preset_delete">Удалить</string>
+    <string name="preset_delete_confirm">Удалить пресет «%1$s»?</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_done">Готово</string>
 
     <!-- Sound screen -->
     <string name="eq_title">Эквалайзер</string>
