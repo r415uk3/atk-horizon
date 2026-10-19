@@ -7,6 +7,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,8 @@ internal fun GainSlider(
 ) {
     val c = LocalHorizonColors.current
     var drag by remember { mutableStateOf<Double?>(null) }
+    // A gesture cancelled by disabling may never report its end; drop the stale local value.
+    LaunchedEffect(enabled) { if (!enabled) drag = null }
     val shown = drag ?: value
     Column(modifier.alpha(if (enabled) 1f else 0.45f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

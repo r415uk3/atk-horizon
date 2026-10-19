@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,7 +39,7 @@ internal const val GITHUB_URL = "https://github.com/r415uk3/atk-horizon"
 fun SettingsScreen(themeMode: ThemeMode, onTheme: (ThemeMode) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalHorizonColors.current
     val context = LocalContext.current
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GlassSurface(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.theme_title), color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
