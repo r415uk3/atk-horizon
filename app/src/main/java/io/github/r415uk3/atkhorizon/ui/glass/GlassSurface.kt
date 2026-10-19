@@ -112,6 +112,7 @@ fun GlassSurface(
 /**
  * A glass capsule button (adapted from the AndroidLiquidGlass catalog's LiquidButton, Apache-2.0,
  * © Kyant0): it swells and follows the finger while pressed. [filled] tints it with the accent.
+ * Modified for this app; license text in third_party/AndroidLiquidGlass-LICENSE.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

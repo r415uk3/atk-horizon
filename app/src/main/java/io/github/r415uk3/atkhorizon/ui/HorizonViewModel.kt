@@ -623,6 +623,9 @@ class HorizonViewModel(
                 } catch (e: Exception) {
                     logWarning("wallpaper save failed", e)
                     WallpaperResult.Failed(WallpaperError.Unreadable)
+                } catch (e: OutOfMemoryError) {
+                    logWarning("wallpaper save ran out of memory", e)
+                    WallpaperResult.Failed(WallpaperError.TooLarge)
                 }
                 when (result) {
                     is WallpaperResult.Failed -> setError(UiError.WallpaperFailed(result.error))

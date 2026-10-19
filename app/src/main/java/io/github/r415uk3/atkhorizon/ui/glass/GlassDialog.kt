@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -34,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.dialog
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +58,9 @@ import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 @Stable
 class GlassDialogHost {
     internal val entries = mutableStateListOf<Entry>()
+
+    /** A dialog is open: the screen behind it should be inert. */
+    val isShowing: Boolean get() = entries.isNotEmpty()
 
     internal class Entry(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
         var onDismiss by mutableStateOf(onDismiss)
@@ -77,7 +86,18 @@ fun GlassDialogLayer(host: GlassDialogHost) {
     if (top != null) {
         BackHandler { top.onDismiss() }
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
-            DialogCard(Modifier.padding(horizontal = 28.dp), top.content)
+            // Focus moves into the dialog when it opens and cannot leave it.
+            val focus = remember(top) { FocusRequester() }
+            LaunchedEffect(top) { runCatching { focus.requestFocus() } }
+            DialogCard(
+                Modifier
+                    .padding(horizontal = 28.dp)
+                    .focusProperties { onExit = { cancelFocusChange() } }
+                    .focusGroup()
+                    .focusRequester(focus)
+                    .focusable(),
+                top.content,
+            )
         }
     }
 }

@@ -1,5 +1,6 @@
 // Adapted from the AndroidLiquidGlass catalog app (LiquidBottomTabs, LiquidBottomTab),
 // https://github.com/Kyant0/AndroidLiquidGlass, Apache-2.0, © Kyant0.
+// Modified for this app. License text: third_party/AndroidLiquidGlass-LICENSE.
 package io.github.r415uk3.atkhorizon.ui.glass
 
 import androidx.compose.animation.core.Animatable

@@ -1,6 +1,9 @@
 package io.github.r415uk3.atkhorizon
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -39,8 +42,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val state by vm.state.collectAsState()
-            HorizonTheme(state.themeMode) { AppShell(vm) }
+            HorizonTheme(state.themeMode) { AppShell(vm, app.wallpaper.state) }
         }
+        holdFirstFrameForWallpaper()
+    }
+
+    /**
+     * On a cold start the wallpaper setting and image load asynchronously; hold the first frame
+     * (at most [WALLPAPER_WAIT_MS]) so the solid background does not flash before the photo.
+     */
+    private fun holdFirstFrameForWallpaper() {
+        val content = findViewById<View>(android.R.id.content)
+        val start = SystemClock.uptimeMillis()
+        content.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    val ready = app.wallpaper.state.value != null || SystemClock.uptimeMillis() - start > WALLPAPER_WAIT_MS
+                    if (ready) content.viewTreeObserver.removeOnPreDrawListener(this) else content.postInvalidateOnAnimation()
+                    return ready
+                }
+            },
+        )
     }
 
     override fun onStart() {
@@ -54,3 +76,5 @@ class MainActivity : ComponentActivity() {
         if (!isChangingConfigurations) app.onUiStopped(vm::flushPending)
     }
 }
+
+private const val WALLPAPER_WAIT_MS = 500L

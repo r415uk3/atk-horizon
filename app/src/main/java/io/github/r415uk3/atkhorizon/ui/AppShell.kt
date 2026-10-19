@@ -11,6 +11,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,7 +48,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +61,7 @@ import io.github.r415uk3.atkhorizon.R
 import io.github.r415uk3.atkhorizon.data.ImportError
 import io.github.r415uk3.atkhorizon.data.WallpaperError
 import io.github.r415uk3.atkhorizon.data.WallpaperFiles
+import io.github.r415uk3.atkhorizon.data.WallpaperImage
 import io.github.r415uk3.atkhorizon.data.saveWallpaper
 import io.github.r415uk3.atkhorizon.data.wallpaperMaxSide
 import io.github.r415uk3.atkhorizon.ui.eq.BandSheet
@@ -78,6 +81,7 @@ import io.github.r415uk3.atkhorizon.ui.screens.SoundScreen
 import io.github.r415uk3.atkhorizon.ui.screens.StatusScreen
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
 enum class Tab(@StringRes val label: Int) { Sound(R.string.tab_sound), Mic(R.string.tab_mic), Device(R.string.tab_device) }
@@ -126,8 +130,9 @@ private val ContentBottomInset = TabBarHeight + 14.dp + 16.dp
  * dialogs) refracts the background and the page, e.g. the EQ curve.
  */
 @Composable
-fun AppShell(vm: HorizonViewModel) {
+fun AppShell(vm: HorizonViewModel, wallpaper: StateFlow<WallpaperImage<ImageBitmap>?>) {
     val state by vm.state.collectAsState()
+    val wallpaperImage = wallpaper.collectAsState().value?.image
     var tab by rememberSaveable { mutableStateOf(Tab.Sound) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     /** Band whose sheet is open (Sound tab). */
@@ -136,8 +141,12 @@ fun AppShell(vm: HorizonViewModel) {
     val showTabs = hasDevice && !settingsOpen
     val sheetBand = editing?.takeIf { showTabs && tab == Tab.Sound && it in state.bands.indices }
     val context = LocalContext.current
-    val wallpaperFiles = remember(context) { WallpaperFiles(context.filesDir) }
+    // Only the application context goes into the long-running save, never the activity.
+    val appContext = context.applicationContext
+    val wallpaperFiles = remember(appContext) { WallpaperFiles(appContext.filesDir) }
     val dialogs = remember { GlassDialogHost() }
+    // While a dialog is open the screen behind it is inert for TalkBack, keyboard and D-pad.
+    val inert = if (dialogs.isShowing) Modifier.clearAndSetSemantics {}.blockFocus() else Modifier
 
     BackHandler(enabled = settingsOpen) { settingsOpen = false }
     BackHandler(enabled = sheetBand != null) { editing = null }
@@ -152,18 +161,19 @@ fun AppShell(vm: HorizonViewModel) {
 
     CompositionLocalProvider(LocalGlassDialogHost provides dialogs) {
         Box(Modifier.fillMaxSize()) {
-            HorizonBackground(state.wallpaperVersion, wallpaperFiles, Modifier.fillMaxSize().layerBackdrop(backgroundBackdrop))
+            HorizonBackground(wallpaperImage, Modifier.fillMaxSize().layerBackdrop(backgroundBackdrop))
             CompositionLocalProvider(LocalBackdrop provides backgroundBackdrop) {
                 Column(
                     Modifier
                         .fillMaxSize()
+                        .then(inert)
                         .layerBackdrop(pageBackdrop)
                         .statusBarsPadding()
                         .padding(horizontal = 16.dp),
                 ) {
                     Header(
                         settingsOpen = settingsOpen,
-                        overWallpaper = state.wallpaperVersion != null,
+                        overWallpaper = wallpaperImage != null,
                         subtitle = when {
                             settingsOpen -> stringResource(R.string.settings_subtitle)
                             state.conn == ConnState.Ready -> stringResource(R.string.status_connected)
@@ -180,9 +190,9 @@ fun AppShell(vm: HorizonViewModel) {
                                 wallpaperSet = state.wallpaperVersion != null,
                                 wallpaperSaving = state.wallpaperSaving,
                                 onPickWallpaper = { uri ->
-                                    val maxSide = screenMaxSide(context)
+                                    val maxSide = screenMaxSide(appContext)
                                     vm.setWallpaper {
-                                        withContext(Dispatchers.IO) { saveWallpaper(context.applicationContext, uri, wallpaperFiles, maxSide) }
+                                        withContext(Dispatchers.IO) { saveWallpaper(appContext, uri, wallpaperFiles, maxSide) }
                                     }
                                 },
                                 onRemoveWallpaper = { vm.removeWallpaper { withContext(Dispatchers.IO) { wallpaperFiles.delete() } } },
@@ -208,6 +218,7 @@ fun AppShell(vm: HorizonViewModel) {
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
+                        .then(inert)
                         .navigationBarsPadding()
                         .padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -232,6 +243,9 @@ fun AppShell(vm: HorizonViewModel) {
     }
 }
 
+/** Nothing inside can take focus (keyboard, D-pad), and focus inside is dropped. */
+private fun Modifier.blockFocus(): Modifier = focusProperties { onEnter = { cancelFocusChange() } }.focusGroup()
+
 /** The longer side of the largest window this device can show, for scaling the wallpaper. */
 private fun screenMaxSide(context: Context): Int {
     val bounds = context.getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
@@ -241,17 +255,23 @@ private fun screenMaxSide(context: Context): Int {
 @Composable
 private fun Header(settingsOpen: Boolean, overWallpaper: Boolean, subtitle: String?, onToggleSettings: () -> Unit) {
     val c = LocalHorizonColors.current
-    // Over a busy wallpaper the title sits on bare photo: a soft halo in the background colour
-    // keeps it readable without covering the picture.
-    val halo = if (overWallpaper) Shadow(c.background.copy(alpha = 0.9f), blurRadius = 16f) else null
     Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                stringResource(if (settingsOpen) R.string.settings_title else R.string.app_title),
-                color = c.ink, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp,
-                style = TextStyle(shadow = halo),
-            )
-            if (subtitle != null) Text(subtitle, color = if (overWallpaper) c.ink else c.muted, fontSize = 13.sp, style = TextStyle(shadow = halo))
+        val title = @Composable {
+            Column(Modifier.padding(if (overWallpaper) PaddingValues(horizontal = 14.dp, vertical = 6.dp) else PaddingValues(0.dp))) {
+                Text(
+                    stringResource(if (settingsOpen) R.string.settings_title else R.string.app_title),
+                    color = c.ink, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp,
+                )
+                if (subtitle != null) Text(subtitle, color = c.muted, fontSize = 13.sp)
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            // Over a wallpaper the title would sit on bare photo: give it a glass backing.
+            if (overWallpaper) {
+                GlassSurface(shape = RoundedRectangle(22.dp), surface = c.glassSurfaceFloating, blurRadius = 16.dp) { title() }
+            } else {
+                title()
+            }
         }
         val description = stringResource(if (settingsOpen) R.string.settings_close else R.string.settings_open)
         GlassButton(

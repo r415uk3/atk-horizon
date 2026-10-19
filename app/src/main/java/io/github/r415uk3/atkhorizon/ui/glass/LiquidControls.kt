@@ -2,6 +2,7 @@
 // https://github.com/Kyant0/AndroidLiquidGlass, Apache-2.0, © Kyant0. Unlike the catalog versions
 // these are fully controlled: the thumb always ends on the caller's value, so a change the app
 // did not apply is never shown as applied.
+// Modified for this app. License text: third_party/AndroidLiquidGlass-LICENSE.
 package io.github.r415uk3.atkhorizon.ui.glass
 
 import androidx.compose.foundation.background
@@ -136,7 +137,7 @@ fun LiquidToggle(
                 indication = null,
                 onValueChange = onCheckedChange,
             )
-            .pointerInput(enabled) {
+            .pointerInput(enabled, isLtr) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -248,7 +249,7 @@ fun LiquidSlider(
             Modifier
                 .fillMaxWidth()
                 .height(36.dp)
-                .pointerInput(enabled, width, valueRange, steps) {
+                .pointerInput(enabled, width, valueRange, steps, isLtr) {
                     if (!enabled) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)

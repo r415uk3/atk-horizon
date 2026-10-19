@@ -1,6 +1,15 @@
 package io.github.r415uk3.atkhorizon.data
 
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -81,5 +90,35 @@ class WallpaperFiles(private val dir: File) {
 
     fun delete() {
         file.delete()
+    }
+}
+
+/** The decoded wallpaper [image] for [version]; both null when there is no wallpaper. */
+data class WallpaperImage<T>(val version: Long?, val image: T?)
+
+/**
+ * Keeps the decoded wallpaper for the whole process, so a recreated activity (theme or
+ * configuration change) shows it from its first frame. [state] is null until the setting has been
+ * read once. A newer version replaces the image only once decoded; a decode failure shows none.
+ */
+class WallpaperLoader<T : Any>(
+    scope: CoroutineScope,
+    versions: Flow<Long?>,
+    io: CoroutineContext,
+    decode: (Long) -> T?,
+) {
+    private val _state = MutableStateFlow<WallpaperImage<T>?>(null)
+    val state: StateFlow<WallpaperImage<T>?> = _state
+
+    init {
+        scope.launch {
+            versions.distinctUntilChanged().collectLatest { v ->
+                _state.value = if (v == null) {
+                    WallpaperImage(null, null)
+                } else {
+                    WallpaperImage(v, withContext(io) { runCatching { decode(v) }.getOrNull() })
+                }
+            }
+        }
     }
 }
