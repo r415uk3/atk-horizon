@@ -121,6 +121,37 @@ class HorizonDeviceTest {
     }
 
     @Test
+    fun offsetVerifyFailsWhenDeviceIgnoresWrite() = runTest {
+        val r = Rig(this)
+        r.fake.dropOffsetWrites = true
+        for (op in listOf<suspend () -> Unit>({ r.dev.setDacOffset(1.5) }, { r.dev.setAdcOffset(1.5) })) {
+            val e = runCatching { op() }.exceptionOrNull()
+            assertTrue(e is VerifyException)
+            assertEquals(emptyList<Int>(), (e as VerifyException).mismatchedBands)
+        }
+    }
+
+    @Test
+    fun offsetVerifyBoundary() = runTest {
+        val r = Rig(this)
+        r.fake.offsetPerturbRaw = 1
+        r.dev.setDacOffset(1.5)
+        r.dev.setAdcOffset(1.5)
+        r.fake.offsetPerturbRaw = 2
+        assertTrue(runCatching { r.dev.setDacOffset(1.5) }.exceptionOrNull() is VerifyException)
+        assertTrue(runCatching { r.dev.setAdcOffset(1.5) }.exceptionOrNull() is VerifyException)
+    }
+
+    @Test
+    fun ncVerifyFailsWhenDeviceIgnoresWrite() = runTest {
+        val r = Rig(this)
+        r.fake.dropNcWrites = true
+        val e = runCatching { r.dev.setNoiseCancelling(true) }.exceptionOrNull()
+        assertTrue(e is VerifyException)
+        assertEquals(emptyList<Int>(), (e as VerifyException).mismatchedBands)
+    }
+
+    @Test
     fun snapshotReadOrder() = runTest {
         val r = Rig(this)
         val s = r.dev.readSnapshot()

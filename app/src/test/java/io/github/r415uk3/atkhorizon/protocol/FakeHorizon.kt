@@ -31,6 +31,11 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
     var dropWritesFor: Set<Int> = emptySet()
     var unplugAfter: Int? = null
     var failIfForbidden = true
+    var dropOffsetWrites = false
+    var dropNcWrites = false
+
+    /** Added (in 1/256 dB units) to every stored offset write, to simulate a device that applies a slightly different value. */
+    var offsetPerturbRaw = 0
 
     private var sends = 0
     @Volatile private var unplugged = false
@@ -66,9 +71,9 @@ class FakeHorizon(private val clock: () -> Long = { 0L }) : HidTransport {
                 val index = p[4].toInt() and 0xFF
                 if (index in rawBands.indices && index !in dropWritesFor) rawBands[index] = p.copyOf()
             }
-            0x03 -> dacOffset = Responses.offsetDb(p)
-            0x02 -> adcOffset = Responses.offsetDb(p)
-            0x1B -> nc = Responses.noiseCancelling(p)
+            0x03 -> if (!dropOffsetWrites) dacOffset = Responses.offsetDb(p) + offsetPerturbRaw / 256.0
+            0x02 -> if (!dropOffsetWrites) adcOffset = Responses.offsetDb(p) + offsetPerturbRaw / 256.0
+            0x1B -> if (!dropNcWrites) nc = Responses.noiseCancelling(p)
             0x01 -> {
                 flashRaw = rawBands.map { it.copyOf() }
                 flashDacOffset = dacOffset
