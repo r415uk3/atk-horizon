@@ -39,9 +39,11 @@ import kotlinx.coroutines.withContext
 /**
  * Turns USB state, device operations and the preset/settings stores into [UiState].
  *
- * All members must be called on the main thread (the [scope]'s dispatcher in tests). All device
- * I/O of one connection goes through a single [Mutex], so live drags, debounced commits, preset
- * switches and offset writes never interleave on the wire.
+ * All members must be called on the main thread (the [scope]'s dispatcher in tests). Each
+ * [HorizonDevice] operation holds the device's own lock for its whole sequence (so even two
+ * ViewModels sharing a device never interleave on the wire); on top of that, all device I/O of one
+ * session goes through the session's [Mutex], which orders live drags, debounced commits, preset
+ * switches and offset writes and keeps a verify failure and its re-read together.
  */
 class HorizonViewModel(
     usbState: StateFlow<UsbState>,

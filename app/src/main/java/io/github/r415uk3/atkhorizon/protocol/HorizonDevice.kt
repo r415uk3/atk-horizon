@@ -1,6 +1,8 @@
 package io.github.r415uk3.atkhorizon.protocol
 
 import kotlin.math.abs
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class DeviceSnapshot(
     val firmware: String,
@@ -25,19 +27,20 @@ fun plausibleOffset(db: Double): Boolean = db in -OFFSET_LIMIT_DB..OFFSET_LIMIT_
 class SuspiciousDeviceValueException(what: String, val value: Double) :
     IllegalStateException("Implausible $what read from the device: $value")
 
-/** High-level verified operations over [HorizonLink]. Never sends 0x05/0x0D/0x17/0xFF. */
+/**
+ * High-level verified operations over [HorizonLink]. Never sends 0x05/0x0D/0x17/0xFF.
+ *
+ * Every public operation holds this device's lock for its whole multi-packet sequence, so two
+ * callers sharing the device (e.g. an old ViewModel's commit and a new one's snapshot read) never
+ * interleave on the wire; waiting callers run in call order.
+ */
 class HorizonDevice(private val link: HorizonLink) {
-    suspend fun readSnapshot(): DeviceSnapshot {
-        val fw = Responses.firmware(link.request(Packets.readFirmware()))
-        val bands = (0 until BAND_COUNT).map { readBand(it) }
-        val dac = Responses.offsetDb(link.request(Packets.readDacOffset()))
-        val adc = Responses.offsetDb(link.request(Packets.readAdcOffset()))
-        val nc = Responses.noiseCancelling(link.request(Packets.readNoiseCancelling()))
-        return DeviceSnapshot(fw, bands, dac, adc, nc)
-    }
+    private val lock = Mutex()
+
+    suspend fun readSnapshot(): DeviceSnapshot = lock.withLock { snapshot() }
 
     /** Live edit for dragging: 0x09 + 0x0A only, no flash save. */
-    suspend fun liveBand(index: Int, band: EqBand) {
+    suspend fun liveBand(index: Int, band: EqBand) = lock.withLock {
         link.write(Packets.writeBand(index, band))
         link.write(Packets.commitCoefficients())
     }
@@ -47,7 +50,44 @@ class HorizonDevice(private val link: HorizonLink) {
      * read back and verify. The current DAC offset is read first and must be plausible
      * ([SuspiciousDeviceValueException] otherwise, before any write).
      */
-    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> = commit(bands, dacOverride = null)
+    suspend fun commitBands(bands: Map<Int, EqBand>): List<DeviceBand> = lock.withLock { commit(bands, dacOverride = null) }
+
+    suspend fun applyPreset(bands: List<EqBand>): List<DeviceBand> =
+        commitBands(bands.mapIndexed { i, b -> i to b }.toMap())
+
+    suspend fun setDacOffset(db: Double) = lock.withLock { setDac(db) }
+
+    suspend fun setAdcOffset(db: Double) = lock.withLock { setAdc(db) }
+
+    suspend fun setNoiseCancelling(on: Boolean) = lock.withLock {
+        link.write(Packets.setNoiseCancelling(on))
+        if (Responses.noiseCancelling(link.request(Packets.readNoiseCancelling())) != on) {
+            throw VerifyException(emptyList())
+        }
+    }
+
+    /**
+     * Default preset, DAC and ADC offsets 0, saved and re-read, as one sequence. The preset is
+     * written with a 0 dB DAC offset (it is zeroed right after anyway), so a reset also recovers
+     * from an implausible one.
+     */
+    suspend fun softReset(): DeviceSnapshot = lock.withLock {
+        commit(EqBand.DEFAULTS.mapIndexed { i, b -> i to b }.toMap(), dacOverride = 0.0)
+        setDac(0.0)
+        setAdc(0.0)
+        snapshot()
+    }
+
+    // ---- Unlocked steps; callers hold [lock]. ----
+
+    private suspend fun snapshot(): DeviceSnapshot {
+        val fw = Responses.firmware(link.request(Packets.readFirmware()))
+        val bands = (0 until BAND_COUNT).map { readBand(it) }
+        val dac = Responses.offsetDb(link.request(Packets.readDacOffset()))
+        val adc = Responses.offsetDb(link.request(Packets.readAdcOffset()))
+        val nc = Responses.noiseCancelling(link.request(Packets.readNoiseCancelling()))
+        return DeviceSnapshot(fw, bands, dac, adc, nc)
+    }
 
     /** [dacOverride]: DAC offset to write instead of the device's current one (no read). */
     private suspend fun commit(bands: Map<Int, EqBand>, dacOverride: Double?): List<DeviceBand> {
@@ -80,38 +120,15 @@ class HorizonDevice(private val link: HorizonLink) {
         throw VerifyException(listOf(i))
     }
 
-    suspend fun applyPreset(bands: List<EqBand>): List<DeviceBand> =
-        commitBands(bands.mapIndexed { i, b -> i to b }.toMap())
+    private suspend fun setDac(db: Double) = setOffset(Packets.setDacOffset(db), Packets.readDacOffset(), db)
 
-    suspend fun setDacOffset(db: Double) =
-        setOffset(Packets.setDacOffset(db), Packets.readDacOffset(), db)
-
-    suspend fun setAdcOffset(db: Double) =
-        setOffset(Packets.setAdcOffset(db), Packets.readAdcOffset(), db)
+    private suspend fun setAdc(db: Double) = setOffset(Packets.setAdcOffset(db), Packets.readAdcOffset(), db)
 
     private suspend fun setOffset(write: ByteArray, read: ByteArray, db: Double) {
         link.write(write)
         link.write(Packets.saveToFlash())
         val got = Responses.offsetDb(link.request(read))
         if (abs(got - db) > 1.0 / 256) throw VerifyException(emptyList())
-    }
-
-    suspend fun setNoiseCancelling(on: Boolean) {
-        link.write(Packets.setNoiseCancelling(on))
-        if (Responses.noiseCancelling(link.request(Packets.readNoiseCancelling())) != on) {
-            throw VerifyException(emptyList())
-        }
-    }
-
-    /**
-     * Default preset, DAC and ADC offsets 0, saved and re-read. The preset is written with a 0 dB
-     * DAC offset (it is zeroed right after anyway), so a reset also recovers from an implausible one.
-     */
-    suspend fun softReset(): DeviceSnapshot {
-        commit(EqBand.DEFAULTS.mapIndexed { i, b -> i to b }.toMap(), dacOverride = 0.0)
-        setDacOffset(0.0)
-        setAdcOffset(0.0)
-        return readSnapshot()
     }
 
     private companion object {

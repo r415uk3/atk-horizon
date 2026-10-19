@@ -1,6 +1,9 @@
 package io.github.r415uk3.atkhorizon.protocol
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
@@ -223,5 +226,25 @@ class HorizonDeviceTest {
         val back = r.dev.applyPreset(custom)
         assertEquals((0 until 8).toList(), back.map { it.index })
         assertEquals(custom, back.map { it.band })
+    }
+
+    @Test
+    fun concurrentCallersNeverInterleaveSequences() = runTest {
+        // E.g. an old ViewModel's commit still running while a new one reads the snapshot.
+        val r = Rig(this)
+        val apply = listOf(0x80 to 0x03) + List(8) { 0x01 to 0x09 } +
+            listOf(0x01 to 0x0A, 0x01 to 0x03, 0x01 to 0x01) + List(8) { 0x80 to 0x09 }
+        val snapshot = listOf(0x80 to 0x0C) + List(8) { 0x80 to 0x09 } + listOf(0x80 to 0x03, 0x80 to 0x02, 0x80 to 0x1B)
+        val reset = r.fake.log.size
+        launch { r.dev.applyPreset(custom) }
+        runCurrent() // the apply is in its 1 s pause before 0x01
+        launch { r.dev.readSnapshot() }
+        launch { r.dev.setNoiseCancelling(true) }
+        launch { r.dev.liveBand(1, custom[0]) }
+        advanceUntilIdle()
+        val pairs = r.fake.log.drop(reset).map { it.dir to it.cmd }
+        val nc = listOf(0x01 to 0x1B, 0x80 to 0x1B)
+        val live = listOf(0x01 to 0x09, 0x01 to 0x0A)
+        assertEquals(apply + snapshot + nc + live, pairs)
     }
 }
