@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -34,6 +32,8 @@ import io.github.r415uk3.atkhorizon.data.Preset
 import io.github.r415uk3.atkhorizon.ui.glass.GlassAlertDialog
 import io.github.r415uk3.atkhorizon.ui.glass.GlassButton
 import io.github.r415uk3.atkhorizon.ui.glass.GlassDialogButton
+import io.github.r415uk3.atkhorizon.ui.glass.GlassMenu
+import io.github.r415uk3.atkhorizon.ui.glass.GlassMenuItem
 import io.github.r415uk3.atkhorizon.ui.theme.LocalHorizonColors
 
 /** Localized name resource for a built-in preset's [key] (its `Preset.name`); null for custom names. */
@@ -98,15 +98,9 @@ fun PresetPills(
                         onClick = { onSelect(p.id) },
                         onLongClick = if (p.builtIn) null else ({ menu = true }),
                     )
-                    DropdownMenu(expanded = menu && enabled, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.preset_rename)) },
-                            onClick = { menu = false; renaming = p.id },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.preset_delete)) },
-                            onClick = { menu = false; deleting = p.id },
-                        )
+                    GlassMenu(expanded = menu && enabled, onDismissRequest = { menu = false }) {
+                        GlassMenuItem(stringResource(R.string.preset_rename), onClick = { menu = false; renaming = p.id })
+                        GlassMenuItem(stringResource(R.string.preset_delete), onClick = { menu = false; deleting = p.id })
                     }
                 }
             }
@@ -117,15 +111,9 @@ fun PresetPills(
                 "+", on = false, enabled = enabled, onClick = { addMenu = true },
                 modifier = Modifier.semantics { contentDescription = addLabel },
             )
-            DropdownMenu(expanded = addMenu && enabled, onDismissRequest = { addMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.preset_save_as)) },
-                    onClick = { addMenu = false; saving = true },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.preset_import)) },
-                    onClick = { addMenu = false; onImport() },
-                )
+            GlassMenu(expanded = addMenu && enabled, onDismissRequest = { addMenu = false }) {
+                GlassMenuItem(stringResource(R.string.preset_save_as), onClick = { addMenu = false; saving = true })
+                GlassMenuItem(stringResource(R.string.preset_import), onClick = { addMenu = false; onImport() })
             }
         }
     }

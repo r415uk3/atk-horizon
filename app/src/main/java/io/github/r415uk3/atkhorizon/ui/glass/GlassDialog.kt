@@ -38,6 +38,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
@@ -62,45 +63,52 @@ class GlassDialogHost {
     /** A dialog is open: the screen behind it should be inert. */
     val isShowing: Boolean get() = entries.isNotEmpty()
 
-    internal class Entry(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    /** A dialog, or a context menu when [anchor] (window coordinates) is set. */
+    internal class Entry(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit, anchor: Rect? = null) {
         var onDismiss by mutableStateOf(onDismiss)
         var content by mutableStateOf(content)
+        var anchor by mutableStateOf(anchor)
+        val isMenu: Boolean get() = anchor != null
     }
 }
 
 val LocalGlassDialogHost = staticCompositionLocalOf<GlassDialogHost?> { null }
 
-/** The topmost dialog of [host] over a dim scrim; tapping the scrim or Back dismisses it. */
+/**
+ * The topmost dialog of [host] over a dim scrim, or its topmost context menu next to its anchor
+ * (no dim); tapping outside or Back dismisses it.
+ */
 @Composable
 fun GlassDialogLayer(host: GlassDialogHost) {
     val c = LocalHorizonColors.current
     val top = host.entries.lastOrNull()
-    AnimatedVisibility(visible = top != null, enter = fadeIn(), exit = fadeOut()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(c.dialogScrim)
-                .pointerInput(Unit) { detectTapGestures { host.entries.lastOrNull()?.onDismiss?.invoke() } },
-        )
+    val dismissTop = Modifier.pointerInput(host) { detectTapGestures { host.entries.lastOrNull()?.onDismiss?.invoke() } }
+    AnimatedVisibility(visible = top != null && !top.isMenu, enter = fadeIn(), exit = fadeOut()) {
+        Box(Modifier.fillMaxSize().background(c.dialogScrim).then(dismissTop))
     }
     if (top != null) {
         BackHandler { top.onDismiss() }
-        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
-            // Focus moves into the dialog when it opens and cannot leave it.
-            val focus = remember(top) { FocusRequester() }
-            LaunchedEffect(top) { runCatching { focus.requestFocus() } }
-            DialogCard(
-                Modifier
-                    .padding(horizontal = 28.dp)
-                    .focusProperties { onExit = { cancelFocusChange() } }
-                    .focusGroup()
-                    .focusRequester(focus)
-                    .focusable(),
-                top.content,
-            )
+        // Focus moves into the dialog or menu when it opens and cannot leave it.
+        val focus = remember(top) { FocusRequester() }
+        LaunchedEffect(top) { runCatching { focus.requestFocus() } }
+        val anchor = top.anchor
+        if (anchor != null) {
+            Box(Modifier.fillMaxSize().then(dismissTop))
+            GlassMenuLayer(anchor, Modifier.trapFocus(focus), onDismiss = { top.onDismiss() }, content = top.content)
+        } else {
+            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
+                DialogCard(Modifier.padding(horizontal = 28.dp).trapFocus(focus), top.content)
+            }
         }
     }
 }
+
+/** Takes focus from [focus] and keeps it inside (keyboard, D-pad). */
+private fun Modifier.trapFocus(focus: FocusRequester): Modifier =
+    focusProperties { onExit = { cancelFocusChange() } }
+        .focusGroup()
+        .focusRequester(focus)
+        .focusable()
 
 @Composable
 private fun DialogCard(modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
