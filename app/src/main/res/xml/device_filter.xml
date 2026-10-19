@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ATK Horizon: VID 0x373B (14139), PID 0x120C (4620). Not wired to a USB_DEVICE_ATTACHED
+     intent-filter on purpose (no auto-launch); kept for an optional per-device default later. -->
+<resources>
+    <usb-device vendor-id="14139" product-id="4620" />
+</resources>
